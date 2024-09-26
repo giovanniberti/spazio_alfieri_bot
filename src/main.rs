@@ -110,11 +110,17 @@ async fn receive_newsletter_email(
         payload.timestamp,
         &payload.signature,
     )
-    .map_err(|e| format!("Payload signature verification failed: {}", e))?;
+    .map_err(|e| {
+        warn!("Payload signature verification failed: {}", e);
+        format!("Payload signature verification failed: {}", e)
+    })?;
 
     let entries = parse_email_body(payload.html_body)
-        .map_err(|e| format!("Could not parse email body: {}", e))?;
-    println!("Got entries: {:?}", entries);
+        .map_err(|e| {
+            warn!("Could not parse email body: {}", e);
+            format!("Could not parse email body: {}", e)
+        })?;
+    info!("Got entries: {:?}", entries);
 
     Ok(())
 }
