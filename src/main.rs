@@ -16,10 +16,27 @@ use std::sync::Arc;
 use teloxide::prelude::*;
 use teloxide::types::Recipient;
 use tracing::info;
+use tracing::level_filters::LevelFilter;
+use tracing_subscriber::{EnvFilter, Layer};
+use tracing_subscriber::layer::SubscriberExt;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt::init();
+    let _ = dotenvy::dotenv();
+
+    let env_filter = EnvFilter::builder()
+        .with_default_directive(LevelFilter::INFO.into())
+        .from_env()
+        .expect("invalid RUST_LOG environment variable!");
+
+    let fmt_layer = tracing_subscriber::fmt::layer()
+        .compact()
+        .with_filter(env_filter);
+
+    let subscriber = tracing_subscriber::registry()
+        .with(fmt_layer);
+
+    tracing::subscriber::set_global_default(subscriber).expect("unable to set up tracing");
 
     info!("Starting SpazioAlfieriBot...");
 
@@ -28,7 +45,7 @@ async fn main() -> anyhow::Result<()> {
         let raw =
             std::env::var("CHANNEL_ID").context("Unable to get environment variable CHANNEL_ID")?;
 
-        ChatId(i64::from_str(&raw).context("Unable to parse channel id into i64")?)
+        ChatId(i64::from_str(&raw).with_context(|| format!("Unable to parse channel id '{}' into i64", raw))?)
     };
 
     let mailgun_api_key = std::env::var("MAILGUN_API_KEY")
