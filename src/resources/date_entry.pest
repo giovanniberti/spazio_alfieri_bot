@@ -1,0 +1,66 @@
+day_of_week = _{
+    "lunedì"
+  | "martedì"
+  | "mercoledì"
+  | "giovedì"
+  | "venerdì"
+  | "sabato"
+  | "domenica"
+}
+
+day_number = @{
+    ASCII_DIGIT ~ ASCII_DIGIT?
+}
+
+month = {
+    "gennaio"
+  | "febbraio"
+  | "marzo"
+  | "aprile"
+  | "maggio"
+  | "giugno"
+  | "luglio"
+  | "agosto"
+  | "settembre"
+  | "ottobre"
+  | "novembre"
+  | "dicembre"
+}
+
+date_component = _{
+    day_of_week? ~ day_number ~ month?
+}
+
+time_part = _{
+    ASCII_DIGIT ~ ASCII_DIGIT
+}
+
+hours   = { time_part }
+minutes = { time_part }
+
+time = ${
+    hours ~ ANY ~ minutes
+}
+
+time_component = _{
+    "ore " ~ time ~ ("e " ~ time)?
+}
+
+separator = _{ "•" }
+
+additional_details = { (!"\n" ~ ANY)+ }
+
+date_entry = {
+    date_component ~ separator ~ time_component ~ additional_details?
+}
+
+date_entries = _{ (date_entry ~ "\n"?)+ }
+
+WHITESPACE = _{
+    " "
+  | "\u{a0}" // non-breaking space
+}
+
+text = _{
+    (date_entries | ANY)*
+}
