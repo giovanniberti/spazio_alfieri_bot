@@ -15,7 +15,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use teloxide::prelude::*;
 use teloxide::types::Recipient;
-use tracing::info;
+use tracing::{info, warn};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{EnvFilter, Layer};
 use tracing_subscriber::layer::SubscriberExt;
@@ -91,12 +91,12 @@ fn verify_mailgun_signature(
     token: &str,
     timestamp: u64,
     signature: &str,
-) -> Result<(), MacError> {
+) -> anyhow::Result<()> {
     let mut mac =
         Hmac::<Sha256>::new_from_slice(api_key.as_bytes()).expect("HMAC can take key of any size");
     mac.update(format!("{}{}", timestamp, token).as_bytes());
 
-    mac.verify_slice(signature.as_bytes())
+    mac.verify_slice(&hex::decode(signature.as_bytes())?).context("Unable to verify signature")
 }
 
 async fn receive_newsletter_email(
