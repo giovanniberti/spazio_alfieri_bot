@@ -1,24 +1,27 @@
 #![feature(iter_array_chunks)]
 
-mod parser;
+use std::str::FromStr;
+use std::sync::Arc;
 
-use crate::parser::parse_email_body;
 use anyhow::Context;
 use axum::extract::State;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::{Form, Router};
-use hmac::digest::MacError;
 use hmac::{Hmac, Mac};
 use serde::Deserialize;
 use sha2::Sha256;
-use std::str::FromStr;
-use std::sync::Arc;
 use teloxide::prelude::*;
 use teloxide::types::Recipient;
-use tracing::{info, warn};
+use tracing::info;
 use tracing::level_filters::LevelFilter;
-use tracing_subscriber::{EnvFilter, Layer};
 use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::{EnvFilter, Layer};
+
+use crate::parser::parse_email_body;
+
+mod parser;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -33,8 +36,7 @@ async fn main() -> anyhow::Result<()> {
         .compact()
         .with_filter(env_filter);
 
-    let subscriber = tracing_subscriber::registry()
-        .with(fmt_layer);
+    let subscriber = tracing_subscriber::registry().with(fmt_layer);
 
     tracing::subscriber::set_global_default(subscriber).expect("unable to set up tracing");
 
@@ -45,7 +47,10 @@ async fn main() -> anyhow::Result<()> {
         let raw =
             std::env::var("CHANNEL_ID").context("Unable to get environment variable CHANNEL_ID")?;
 
-        ChatId(i64::from_str(&raw).with_context(|| format!("Unable to parse channel id '{}' into i64", raw))?)
+        ChatId(
+            i64::from_str(&raw)
+                .with_context(|| format!("Unable to parse channel id '{}' into i64", raw))?,
+        )
     };
 
     let mailgun_api_key = std::env::var("MAILGUN_API_KEY")
@@ -76,6 +81,27 @@ struct ServerState {
     mailgun_api_key: String,
 }
 
+struct ServerError(anyhow::Error);
+
+impl IntoResponse for ServerError {
+    fn into_response(self) -> Response {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Something went wrong: {}", self.0),
+        )
+            .into_response()
+    }
+}
+
+impl<E> From<E> for ServerError
+where
+    E: Into<anyhow::Error>,
+{
+    fn from(err: E) -> Self {
+        Self(err.into())
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct MailgunWebhookBody {
     from: String,
@@ -102,26 +128,46 @@ fn verify_mailgun_signature(
 
 async fn receive_newsletter_email(
     State(state): State<Arc<ServerState>>,
-    Form(payload): Form<MailgunWebhookBody>,
-) -> Result<(), String> {
-    info!("Received webhook from Mailgun");
-    verify_mailgun_signature(
-        &state.mailgun_api_key,
-        &payload.token,
-        payload.timestamp,
-        &payload.signature,
-    )
-    .map_err(|e| {
-        warn!("Payload signature verification failed: {}", e);
-        format!("Payload signature verification failed: {}", e)
-    })?;
+    payload: Form<MailgunWebhookBody>,
+) -> Result<(), ServerError> {
+    async fn handle_email(
+        state: Arc<ServerState>,
+        Form(payload): Form<MailgunWebhookBody>,
+    ) -> Result<(), ServerError> {
+        info!("Received webhook from Mailgun");
+        verify_mailgun_signature(
+            &state.mailgun_api_key,
+            &payload.token,
+            payload.timestamp,
+            &payload.signature,
+        )
+        .context("Payload signature verification failed")?;
 
-    let entries = parse_email_body(payload.html_body)
-        .map_err(|e| {
-            warn!("Could not parse email body: {}", e);
-            format!("Could not parse email body: {}", e)
-        })?;
-    info!("Got entries: {:?}", entries);
+        let entries = parse_email_body(payload.html_body).context("Could not parse email body")?;
+
+        let bot = &state.bot;
+        bot.send_message(
+            Recipient::Id(state.channel_id),
+            format!(
+                "Got entries: {:?}",
+                entries.iter().map(|e| &e.title).collect::<Vec<_>>()
+            ),
+        )
+        .await
+        .context("Unable to send update message")?;
+
+        Ok(())
+    }
+
+    if let Err(e) = handle_email(state.clone(), payload).await {
+        let bot = &state.bot;
+        bot.send_message(
+            Recipient::Id(state.channel_id),
+            format!("Got error while handling email: {}", e.0),
+        )
+        .await
+        .context("Unable to send error message")?;
+    }
 
     Ok(())
 }

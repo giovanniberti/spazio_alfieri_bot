@@ -11,7 +11,7 @@ use scraper::{Element, Html, Node, Selector};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProgrammingEntry {
-    title: String,
+    pub title: String,
     date_entries: Vec<DateEntry>,
 }
 
