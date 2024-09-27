@@ -169,7 +169,11 @@ async fn receive_newsletter_email(
         )
         .context("Payload signature verification failed")?;
 
-        if !state.allowed_senders.iter().any(|s| payload.from.contains(s)) {
+        if !state
+            .allowed_senders
+            .iter()
+            .any(|s| payload.from.contains(s))
+        {
             return Err(ServerError(anyhow!(
                 "Got mail from unknown sender: {}",
                 &payload.from

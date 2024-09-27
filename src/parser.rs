@@ -155,7 +155,7 @@ fn parse_date_entry(pair: Pair<Rule>) -> anyhow::Result<Vec<DateEntry>> {
             let now = Utc::now().with_timezone(&Europe::Rome);
             let month = month.unwrap_or(now.month());
             let date_entries = times
-                .into_iter()
+                .iter()
                 .map(|(hours, minutes)| {
                     Europe::Rome
                         .with_ymd_and_hms(now.year(), month, day, *hours, *minutes, 0)
@@ -278,13 +278,31 @@ mod tests {
                         additional_details: None,
                     },
                     DateEntry {
+                        date: DateTime::parse_from_rfc3339("2024-09-27T17:00:00+02:00")
+                            .unwrap()
+                            .with_timezone(&Europe::Rome),
+                        additional_details: None,
+                    },
+                    DateEntry {
                         date: DateTime::parse_from_rfc3339("2024-09-27T21:15:00+02:00")
                             .unwrap()
                             .with_timezone(&Europe::Rome),
                         additional_details: None,
                     },
                     DateEntry {
+                        date: DateTime::parse_from_rfc3339("2024-09-28T15:30:00+02:00")
+                            .unwrap()
+                            .with_timezone(&Europe::Rome),
+                        additional_details: None,
+                    },
+                    DateEntry {
                         date: DateTime::parse_from_rfc3339("2024-09-28T19:15:00+02:00")
+                            .unwrap()
+                            .with_timezone(&Europe::Rome),
+                        additional_details: None,
+                    },
+                    DateEntry {
+                        date: DateTime::parse_from_rfc3339("2024-09-29T15:00:00+02:00")
                             .unwrap()
                             .with_timezone(&Europe::Rome),
                         additional_details: None,
