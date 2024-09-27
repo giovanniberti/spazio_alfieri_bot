@@ -1,9 +1,10 @@
 #![feature(iter_array_chunks)]
 
+use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -64,6 +65,12 @@ async fn main() -> anyhow::Result<()> {
         )
     };
 
+    let allowed_senders = std::env::var("ALLOWED_SENDERS")
+        .context("Unable to get environment variable ALLOWED_SENDERS")?
+        .split(",")
+        .map(str::to_string)
+        .collect();
+
     let mailgun_api_key = std::env::var("MAILGUN_API_KEY")
         .context("Unable to get environment variable MAILGUN_API_KEY")?;
 
@@ -72,6 +79,7 @@ async fn main() -> anyhow::Result<()> {
         channel_id,
         mailgun_api_key,
         error_chat_id,
+        allowed_senders,
     });
 
     let router = Router::new()
@@ -92,6 +100,7 @@ struct ServerState {
     channel_id: ChatId,
     mailgun_api_key: String,
     error_chat_id: ChatId,
+    allowed_senders: HashSet<String>,
 }
 
 struct ServerError(anyhow::Error);
@@ -155,6 +164,13 @@ async fn receive_newsletter_email(
             &payload.signature,
         )
         .context("Payload signature verification failed")?;
+
+        if !state.allowed_senders.iter().any(|s| payload.from.contains(s)) {
+            return Err(ServerError(anyhow!(
+                "Got mail from unknown sender: {}",
+                &payload.from
+            )));
+        }
 
         let newsletter_entry =
             parse_email_body(payload.html_body).context("Could not parse email body")?;
