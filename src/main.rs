@@ -96,7 +96,8 @@ fn verify_mailgun_signature(
         Hmac::<Sha256>::new_from_slice(api_key.as_bytes()).expect("HMAC can take key of any size");
     mac.update(format!("{}{}", timestamp, token).as_bytes());
 
-    mac.verify_slice(&hex::decode(signature.as_bytes())?).context("Unable to verify signature")
+    mac.verify_slice(&hex::decode(signature.as_bytes())?)
+        .context("Unable to verify signature")
 }
 
 async fn receive_newsletter_email(
