@@ -8,7 +8,7 @@ use anyhow::{anyhow, Context};
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::post;
+use axum::routing::{get, post};
 use axum::{Form, Router};
 use hmac::{Hmac, Mac};
 use itertools::Itertools;
@@ -83,7 +83,7 @@ async fn main() -> anyhow::Result<()> {
     });
 
     let router = Router::new()
-        .route("/message", post(post_message))
+        .route("/health", get(health))
         .route("/mail", post(receive_newsletter_email))
         .with_state(server_state);
 
@@ -93,6 +93,10 @@ async fn main() -> anyhow::Result<()> {
     axum::serve(listener, router)
         .await
         .context("Unable to start server")
+}
+
+async fn health() -> &'static str {
+    "OK"
 }
 
 struct ServerState {
@@ -197,20 +201,6 @@ async fn receive_newsletter_email(
         .await
         .context("Unable to send error message")?;
     }
-
-    Ok(())
-}
-
-async fn post_message(
-    State(state): State<Arc<ServerState>>,
-    message: String,
-) -> Result<(), String> {
-    let bot = &state.bot;
-
-    info!("Sending message...");
-    bot.send_message(Recipient::Id(state.channel_id), message)
-        .await
-        .map_err(|e| format!("Unable to send message: {}", e))?;
 
     Ok(())
 }

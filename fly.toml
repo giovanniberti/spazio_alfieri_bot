@@ -21,29 +21,15 @@ kill_timeout = '5s'
   min_machines_running = 0
   processes = ['app']
 
-[[services]]
-  protocol = 'tcp'
-  internal_port = 3000
-  processes = ['app']
-
-  [[services.ports]]
-    port = 80
-    handlers = ['http']
-    force_https = true
-
-  [[services.ports]]
-    port = 443
-    handlers = ['tls', 'http']
-
-  [services.concurrency]
-    type = 'connections'
-    hard_limit = 25
-    soft_limit = 20
-
-  [[services.tcp_checks]]
-    interval = '15s'
+[checks]
+  [checks.health_check]
+    interval = '30s'
     timeout = '2s'
-    grace_period = '1s'
+    grace_period = '30s'
+    method = "GET"
+    path = "/health"
+    type = "http"
+    port = 3000
 
 [[vm]]
   size = 'shared-cpu-1x'
