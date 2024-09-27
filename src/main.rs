@@ -221,7 +221,7 @@ _Nuovi film in arrivo allo Spazio Alfieri\\!_
 
 {}
 
-[Apri nel browser]({})
+[👉 Apri nel browser 🔗]({})
     ",
         entries_text, newsletter_entry.newsletter_link
     )
