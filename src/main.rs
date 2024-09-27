@@ -207,6 +207,8 @@ fn make_message(newsletter_entry: &NewsletterEntry) -> String {
         .join("\n\n");
     format!(
         "\
+_Nuovi film in arrivo allo Spazio Alfieri\\!_
+
 {}
 
 [Apri nel browser]({})
@@ -240,7 +242,7 @@ fn format_message(entry: &ProgrammingEntry) -> String {
 
     format!(
         "\
-**{}**
+*{}*
 Prossime date:
 {}
     ",
