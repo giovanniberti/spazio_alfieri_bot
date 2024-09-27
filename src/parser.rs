@@ -83,9 +83,9 @@ fn parse_html(dom: Html) -> anyhow::Result<NewsletterEntry> {
         for pair in parsed_pairs {
             match pair.as_rule() {
                 Rule::date_entry => {
-                    let date_entry =
+                    let parsed_date_entries =
                         parse_date_entry(pair).context("Unable to parse date entry")?;
-                    date_entries.push(date_entry);
+                    date_entries.extend(parsed_date_entries);
                 }
                 r => bail!("Unexpected top-level rule: {:?}", r),
             }
@@ -103,11 +103,10 @@ fn parse_html(dom: Html) -> anyhow::Result<NewsletterEntry> {
     })
 }
 
-fn parse_date_entry(pair: Pair<Rule>) -> anyhow::Result<DateEntry> {
+fn parse_date_entry(pair: Pair<Rule>) -> anyhow::Result<Vec<DateEntry>> {
     let mut day_number = None;
     let mut month = None;
-    let mut hours = None;
-    let mut minutes = None;
+    let mut times = Vec::new();
     let mut additional_details = None;
 
     for inner_pair in pair.into_inner() {
@@ -142,64 +141,58 @@ fn parse_date_entry(pair: Pair<Rule>) -> anyhow::Result<DateEntry> {
                 additional_details = Some(src.to_string());
             }
             Rule::time => {
-                (hours, minutes) = parse_time(inner_pair)
+                let (hours, minutes) = parse_time(inner_pair)
                     .with_context(|| format!("Unable to parse time from '{}'", src))?;
-            }
-            Rule::hours => {
-                hours = Some(
-                    u32::from_str(src)
-                        .with_context(|| format!("Unable to parse hours from value '{}'", src))?,
-                )
-            }
-            Rule::minutes => {
-                minutes = Some(
-                    u32::from_str(src)
-                        .with_context(|| format!("Unable to parse minutes from value '{}'", src))?,
-                )
+
+                times.push((hours, minutes));
             }
             r => bail!("Unexpected rule: '{:?}'", r),
         }
     }
 
-    match (day_number, month, hours, minutes, additional_details) {
-        (Some(day), _, Some(hours), Some(minutes), additional_details) => {
+    match (day_number, month, &times, additional_details) {
+        (Some(day), _, times, additional_details) if !times.is_empty() => {
             let now = Utc::now().with_timezone(&Europe::Rome);
             let month = month.unwrap_or(now.month());
-            let date = Europe::Rome
-                .with_ymd_and_hms(now.year(), month, day, hours, minutes, 0)
-                .single()
-                .with_context(|| {
-                    format!(
-                        "Unable to get valid date for y-m-d h:m:s = {}-{}-{} {}:{}:{}",
-                        now.year(),
-                        month,
-                        day,
-                        hours,
-                        minutes,
-                        0
-                    )
-                })?;
+            let date_entries = times
+                .into_iter()
+                .map(|(hours, minutes)| {
+                    Europe::Rome
+                        .with_ymd_and_hms(now.year(), month, day, *hours, *minutes, 0)
+                        .single()
+                        .with_context(|| {
+                            format!(
+                                "Unable to get valid date for y-m-d h:m:s = {}-{}-{} {}:{}:{}",
+                                now.year(),
+                                month,
+                                day,
+                                hours,
+                                minutes,
+                                0
+                            )
+                        })
+                })
+                .collect::<anyhow::Result<Vec<_>>>()?
+                .into_iter()
+                .map(|date| DateEntry {
+                    date,
+                    additional_details: additional_details.clone(),
+                })
+                .collect();
 
-            Ok(DateEntry {
-                date,
-                additional_details,
-            })
+            Ok(date_entries)
         }
         _ => {
             let missing_day_str = match day_number {
                 Some(_) => None,
                 None => Some("day"),
             };
-            let missing_hours_str = match hours {
-                Some(_) => None,
-                None => Some("hours"),
-            };
-            let missing_minutes_str = match minutes {
-                Some(_) => None,
-                None => Some("minutes"),
+            let missing_times_str = match times.is_empty() {
+                false => None,
+                true => Some("times"),
             };
 
-            let missing_fields = [missing_day_str, missing_hours_str, missing_minutes_str]
+            let missing_fields = [missing_day_str, missing_times_str]
                 .into_iter()
                 .flatten()
                 .collect::<Vec<_>>();
@@ -208,7 +201,7 @@ fn parse_date_entry(pair: Pair<Rule>) -> anyhow::Result<DateEntry> {
     }
 }
 
-fn parse_time(time: Pair<Rule>) -> anyhow::Result<(Option<u32>, Option<u32>)> {
+fn parse_time(time: Pair<Rule>) -> anyhow::Result<(u32, u32)> {
     let mut hours = None;
     let mut minutes = None;
 
@@ -231,7 +224,10 @@ fn parse_time(time: Pair<Rule>) -> anyhow::Result<(Option<u32>, Option<u32>)> {
         }
     }
 
-    Ok((hours, minutes))
+    Ok((
+        hours.ok_or(anyhow!("Missing hours rule inside time component"))?,
+        minutes.ok_or(anyhow!("Missing minutes rule inside time component"))?,
+    ))
 }
 
 #[cfg(test)]
