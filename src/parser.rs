@@ -13,13 +13,13 @@ use tracing::info;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProgrammingEntry {
     pub title: String,
-    date_entries: Vec<DateEntry>,
+    pub date_entries: Vec<DateEntry>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct DateEntry {
-    date: DateTime<Tz>,
-    additional_details: Option<String>,
+pub struct DateEntry {
+    pub date: DateTime<Tz>,
+    pub additional_details: Option<String>,
 }
 
 #[derive(Parser)]

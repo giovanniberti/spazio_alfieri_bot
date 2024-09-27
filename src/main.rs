@@ -10,16 +10,17 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::{Form, Router};
 use hmac::{Hmac, Mac};
+use itertools::Itertools;
 use serde::Deserialize;
 use sha2::Sha256;
 use teloxide::prelude::*;
-use teloxide::types::Recipient;
-use tracing::info;
+use teloxide::types::{ParseMode, Recipient};
 use tracing::level_filters::LevelFilter;
+use tracing::info;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{EnvFilter, Layer};
 
-use crate::parser::parse_email_body;
+use crate::parser::{parse_email_body, ProgrammingEntry};
 
 mod parser;
 
@@ -144,17 +145,14 @@ async fn receive_newsletter_email(
         .context("Payload signature verification failed")?;
 
         let entries = parse_email_body(payload.html_body).context("Could not parse email body")?;
+        let message = make_message(&entries);
 
-        let bot = &state.bot;
-        bot.send_message(
-            Recipient::Id(state.channel_id),
-            format!(
-                "Got entries: {:?}",
-                entries.iter().map(|e| &e.title).collect::<Vec<_>>()
-            ),
-        )
-        .await
-        .context("Unable to send update message")?;
+        state
+            .bot
+            .send_message(Recipient::Id(state.channel_id), message)
+            .parse_mode(ParseMode::MarkdownV2)
+            .await
+            .context("Unable to send update message")?;
 
         Ok(())
     }
@@ -163,7 +161,7 @@ async fn receive_newsletter_email(
         let bot = &state.bot;
         bot.send_message(
             Recipient::Id(state.channel_id),
-            format!("Got error while handling email: {}", e.0),
+            format!("Got error while handling email: {:#}", e.0),
         )
         .await
         .context("Unable to send error message")?;
@@ -184,4 +182,41 @@ async fn post_message(
         .map_err(|e| format!("Unable to send message: {}", e))?;
 
     Ok(())
+}
+
+fn make_message(entries: &[ProgrammingEntry]) -> String {
+    entries.into_iter().map(|e| format_message(e)).join("\n\n")
+}
+
+fn format_message(entry: &ProgrammingEntry) -> String {
+    let formatted_dates = entry
+        .date_entries
+        .iter()
+        .map(|date_entry| {
+            let human_readable_date = date_entry.date.format("%d/%m/%Y");
+            let human_readable_time = date_entry.date.format("%H:%M");
+
+            // todo: make clock emoji represent time
+            format!(
+                " • 📆 {} 🕔 {} {}",
+                human_readable_date,
+                human_readable_time,
+                date_entry
+                    .additional_details
+                    .as_ref()
+                    .map(|info| format!("_{}_", info))
+                    .as_deref()
+                    .unwrap_or("")
+            )
+        })
+        .join("\n");
+
+    format!(
+        "\
+**{}**
+Prossime date:
+{}
+    ",
+        entry.title, formatted_dates
+    )
 }
