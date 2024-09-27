@@ -15,7 +15,7 @@ use serde::Deserialize;
 use sha2::Sha256;
 use teloxide::prelude::*;
 use teloxide::types::{ParseMode, Recipient};
-use tracing::info;
+use tracing::{error, info};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{EnvFilter, Layer};
@@ -159,6 +159,8 @@ async fn receive_newsletter_email(
     }
 
     if let Err(e) = handle_email(state.clone(), payload).await {
+        error!("{:#}", e.0);
+
         let bot = &state.bot;
         bot.send_message(
             Recipient::Id(state.channel_id),
