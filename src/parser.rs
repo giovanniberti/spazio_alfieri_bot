@@ -11,6 +11,12 @@ use scraper::{Element, Html, Node, Selector};
 use tracing::info;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewsletterEntry {
+    pub programming_entries: Vec<ProgrammingEntry>,
+    pub newsletter_link: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProgrammingEntry {
     pub title: String,
     pub date_entries: Vec<DateEntry>,
@@ -26,17 +32,26 @@ pub struct DateEntry {
 #[grammar = "resources/date_entry.pest"]
 struct DateEntryParser;
 
-pub fn parse_email_body(body: String) -> anyhow::Result<Vec<ProgrammingEntry>> {
+pub fn parse_email_body(body: String) -> anyhow::Result<NewsletterEntry> {
     parse_html(Html::parse_document(&body))
 }
 
-fn parse_html(dom: Html) -> anyhow::Result<Vec<ProgrammingEntry>> {
-    let selector = Selector::parse(r#"div div div table tbody tr td table tbody tr td table tbody tr td table tbody tr td table tbody tr td h1"#)
+fn parse_html(dom: Html) -> anyhow::Result<NewsletterEntry> {
+    let newsletter_link_selector =
+        Selector::parse(r#"table > tbody > tr > td > table > tbody > tr > td > p > a"#).unwrap();
+    let newsletter_link = dom
+        .select(&newsletter_link_selector)
+        .next()
+        .ok_or(anyhow!("Could not find newsletter link!"))?
+        .attr("href")
+        .ok_or(anyhow!("Newsletter link doesn't have `href` attribute!"))?;
+
+    let title_selector = Selector::parse(r#"div div div table tbody tr td table tbody tr td table tbody tr td table tbody tr td table tbody tr td h1"#)
         .map_err(|_| anyhow!("Invalid selector for title"))?;
 
     let mut entries = Vec::new();
 
-    let title_nodes = dom.select(&selector).collect::<Vec<_>>();
+    let title_nodes = dom.select(&title_selector).collect::<Vec<_>>();
     info!("Got {} title nodes", title_nodes.len());
 
     for title_node in title_nodes {
@@ -82,7 +97,10 @@ fn parse_html(dom: Html) -> anyhow::Result<Vec<ProgrammingEntry>> {
         });
     }
 
-    Ok(entries)
+    Ok(NewsletterEntry {
+        programming_entries: entries,
+        newsletter_link: newsletter_link.into(),
+    })
 }
 
 fn parse_date_entry(pair: Pair<Rule>) -> anyhow::Result<DateEntry> {
@@ -183,7 +201,7 @@ fn parse_date_entry(pair: Pair<Rule>) -> anyhow::Result<DateEntry> {
 
             let missing_fields = [missing_day_str, missing_hours_str, missing_minutes_str]
                 .into_iter()
-                .filter_map(|x| x)
+                .flatten()
                 .collect::<Vec<_>>();
             bail!("Missing required data: {:?}", missing_fields);
         }
@@ -226,7 +244,7 @@ mod tests {
     use tracing_test::traced_test;
 
     use crate::parser;
-    use crate::parser::{DateEntry, ProgrammingEntry};
+    use crate::parser::{DateEntry, NewsletterEntry, ProgrammingEntry};
 
     #[traced_test]
     #[test]
@@ -235,9 +253,10 @@ mod tests {
         let mut file_contents = String::new();
         f.read_to_string(&mut file_contents).unwrap();
 
-        let entries = parser::parse_email_body(file_contents).unwrap();
+        let newsletter_entry = parser::parse_email_body(file_contents).unwrap();
 
-        let expected_output: Vec<ProgrammingEntry> = vec![
+        let expected_link = "https://6534.sqm-secure.eu/index.php?option=com_acymailing&ctrl=archive&task=view&mailid=231&key=FdgUJqRewx&subid=5789-00898287&tmpl=component&lang=it&utm_source=newsletter_231&utm_medium=email&utm_campaign=newsletter-24-30-novembre&acm=5789_231";
+        let expected_entries: Vec<ProgrammingEntry> = vec![
             ProgrammingEntry {
                 title: "LA SINDROME DEGLI AMORI PASSATI".to_string(),
                 date_entries: vec![DateEntry {
@@ -426,6 +445,10 @@ mod tests {
             },
         ];
 
-        assert_eq!(entries, expected_output);
+        let expected_output = NewsletterEntry {
+            programming_entries: expected_entries,
+            newsletter_link: expected_link.into(),
+        };
+        assert_eq!(newsletter_entry, expected_output);
     }
 }

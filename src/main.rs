@@ -15,12 +15,12 @@ use serde::Deserialize;
 use sha2::Sha256;
 use teloxide::prelude::*;
 use teloxide::types::{ParseMode, Recipient};
-use tracing::level_filters::LevelFilter;
 use tracing::info;
+use tracing::level_filters::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{EnvFilter, Layer};
 
-use crate::parser::{parse_email_body, ProgrammingEntry};
+use crate::parser::{parse_email_body, NewsletterEntry, ProgrammingEntry};
 
 mod parser;
 
@@ -144,8 +144,9 @@ async fn receive_newsletter_email(
         )
         .context("Payload signature verification failed")?;
 
-        let entries = parse_email_body(payload.html_body).context("Could not parse email body")?;
-        let message = make_message(&entries);
+        let newsletter_entry =
+            parse_email_body(payload.html_body).context("Could not parse email body")?;
+        let message = make_message(&newsletter_entry);
 
         state
             .bot
@@ -184,8 +185,20 @@ async fn post_message(
     Ok(())
 }
 
-fn make_message(entries: &[ProgrammingEntry]) -> String {
-    entries.into_iter().map(|e| format_message(e)).join("\n\n")
+fn make_message(newsletter_entry: &NewsletterEntry) -> String {
+    let entries_text = newsletter_entry
+        .programming_entries
+        .iter()
+        .map(format_message)
+        .join("\n\n");
+    format!(
+        "\
+{}
+
+[Apri nel browser]({})
+    ",
+        entries_text, newsletter_entry.newsletter_link
+    )
 }
 
 fn format_message(entry: &ProgrammingEntry) -> String {
