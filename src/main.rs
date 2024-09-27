@@ -15,8 +15,8 @@ use serde::Deserialize;
 use sha2::Sha256;
 use teloxide::prelude::*;
 use teloxide::types::{ParseMode, Recipient};
-use tracing::{error, info};
 use tracing::level_filters::LevelFilter;
+use tracing::{error, info};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{EnvFilter, Layer};
 
@@ -54,6 +54,16 @@ async fn main() -> anyhow::Result<()> {
         )
     };
 
+    let error_chat_id = {
+        let raw = std::env::var("ERROR_CHAT_ID")
+            .context("Unable to get environment variable ERROR_CHAT_ID")?;
+
+        ChatId(
+            i64::from_str(&raw)
+                .with_context(|| format!("Unable to parse error chat id '{}' into i64", raw))?,
+        )
+    };
+
     let mailgun_api_key = std::env::var("MAILGUN_API_KEY")
         .context("Unable to get environment variable MAILGUN_API_KEY")?;
 
@@ -61,6 +71,7 @@ async fn main() -> anyhow::Result<()> {
         bot,
         channel_id,
         mailgun_api_key,
+        error_chat_id,
     });
 
     let router = Router::new()
@@ -80,6 +91,7 @@ struct ServerState {
     bot: Bot,
     channel_id: ChatId,
     mailgun_api_key: String,
+    error_chat_id: ChatId,
 }
 
 struct ServerError(anyhow::Error);
@@ -163,7 +175,7 @@ async fn receive_newsletter_email(
 
         let bot = &state.bot;
         bot.send_message(
-            Recipient::Id(state.channel_id),
+            Recipient::Id(state.error_chat_id),
             format!("Got error while handling email: {:#}", e.0),
         )
         .await
