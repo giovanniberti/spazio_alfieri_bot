@@ -27,12 +27,12 @@ or directly from the `target/release` directory.
 The bot expects the following environment variables, either from the OS environment
 or from a `.env` file placed in the same directory as the executable:
 
-| Variable        | Description                                                                 |
-|-----------------|-----------------------------------------------------------------------------|
-| MAILGUN_API_KEY | [MailGun](https://www.mailgun.com/) API key                                 |
-| TELOXIDE_TOKEN  | [Telegram bot token](https://core.telegram.org/bots/#how-do-i-create-a-bot) |
-| CHANNEL_ID      | Channel id where messages will be pusblished to                             |
-| ERROR_CHAT_ID   | Chat id for reporting error messages                                        |
-| ALLOWED_SENDERS | Comma-separated list of allowed email senders (email addresses)             |
+| Variable                    | Description                                                                 |
+|-----------------------------|-----------------------------------------------------------------------------|
+| MAILGUN_WEBHOOK_SIGNING_KEY | [MailGun](https://www.mailgun.com/) webhook signing key                     |
+| TELOXIDE_TOKEN              | [Telegram bot token](https://core.telegram.org/bots/#how-do-i-create-a-bot) |
+| CHANNEL_ID                  | Channel id where messages will be pusblished to                             |
+| ERROR_CHAT_ID               | Chat id for reporting error messages                                        |
+| ALLOWED_SENDERS             | Comma-separated list of allowed email senders (email addresses)             |
 
 All environment variables are required.

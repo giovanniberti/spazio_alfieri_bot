@@ -71,13 +71,13 @@ async fn main() -> anyhow::Result<()> {
         .map(str::to_string)
         .collect();
 
-    let mailgun_api_key = std::env::var("MAILGUN_API_KEY")
-        .context("Unable to get environment variable MAILGUN_API_KEY")?;
+    let mailgun_webhook_signing_key = std::env::var("MAILGUN_WEBHOOK_SIGNING_KEY")
+        .context("Unable to get environment variable MAILGUN_WEBHOOK_SIGNING_KEY")?;
 
     let server_state = Arc::new(ServerState {
         bot,
         channel_id,
-        mailgun_api_key,
+        mailgun_webhook_signing_key,
         error_chat_id,
         allowed_senders,
     });
@@ -102,7 +102,7 @@ async fn health() -> &'static str {
 struct ServerState {
     bot: Bot,
     channel_id: ChatId,
-    mailgun_api_key: String,
+    mailgun_webhook_signing_key: String,
     error_chat_id: ChatId,
     allowed_senders: HashSet<String>,
 }
@@ -139,13 +139,13 @@ struct MailgunWebhookBody {
 }
 
 fn verify_mailgun_signature(
-    api_key: &str,
+    signing_key: &str,
     token: &str,
     timestamp: u64,
     signature: &str,
 ) -> anyhow::Result<()> {
     let mut mac =
-        Hmac::<Sha256>::new_from_slice(api_key.as_bytes()).expect("HMAC can take key of any size");
+        Hmac::<Sha256>::new_from_slice(signing_key.as_bytes()).expect("HMAC can take key of any size");
     mac.update(format!("{}{}", timestamp, token).as_bytes());
 
     mac.verify_slice(&hex::decode(signature.as_bytes())?)
@@ -162,7 +162,7 @@ async fn receive_newsletter_email(
     ) -> Result<(), ServerError> {
         info!("Received webhook from Mailgun");
         verify_mailgun_signature(
-            &state.mailgun_api_key,
+            &state.mailgun_webhook_signing_key,
             &payload.token,
             payload.timestamp,
             &payload.signature,
