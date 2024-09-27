@@ -8,6 +8,7 @@ use pest::iterators::Pair;
 use pest::Parser;
 use pest_derive::Parser;
 use scraper::{Element, Html, Node, Selector};
+use tracing::info;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProgrammingEntry {
@@ -30,12 +31,15 @@ pub fn parse_email_body(body: String) -> anyhow::Result<Vec<ProgrammingEntry>> {
 }
 
 fn parse_html(dom: Html) -> anyhow::Result<Vec<ProgrammingEntry>> {
-    let selector = Selector::parse(r#"html body.contentpane.modal div#acyarchiveview div#newsletter_preview_area.newsletter_body div.es-wrapper-color table.es-wrapper tbody tr td table.es-content tbody tr td table.es-content-body tbody tr td table tbody tr td table tbody tr td.es-m-txt-c h1"#)
+    let selector = Selector::parse(r#"div div div table tbody tr td table tbody tr td table tbody tr td table tbody tr td table tbody tr td h1"#)
         .map_err(|_| anyhow!("Invalid selector for title"))?;
 
     let mut entries = Vec::new();
 
-    for title_node in dom.select(&selector) {
+    let title_nodes = dom.select(&selector).collect::<Vec<_>>();
+    info!("Got {} title nodes", title_nodes.len());
+
+    for title_node in title_nodes {
         let title = title_node
             .text()
             .next()
