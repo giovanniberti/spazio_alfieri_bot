@@ -13,7 +13,7 @@ use axum::{Form, Router};
 use hmac::{Hmac, Mac};
 use itertools::Itertools;
 use migration::{Migrator, MigratorTrait};
-use sea_orm::Database;
+use sea_orm::{ActiveModelTrait, ActiveValue, Database, DatabaseConnection, EntityTrait};
 use serde::Deserialize;
 use sha2::Sha256;
 use teloxide::prelude::*;
@@ -85,12 +85,12 @@ async fn main() -> anyhow::Result<()> {
     let db_password = std::env::var("POSTGRES_PASSWORD")
         .context("Unable to read POSTGRES_PASSWORD environment variable")?;
 
-    let connection = Database::connect(format!(
+    let db_connection = Database::connect(format!(
         "postgresql://{}:{}@{}/{}",
         db_username, db_password, db_host, db_name
     ))
     .await?;
-    Migrator::up(&connection, None).await?;
+    Migrator::up(&db_connection, None).await?;
 
     let server_state = Arc::new(ServerState {
         bot,
@@ -98,6 +98,7 @@ async fn main() -> anyhow::Result<()> {
         mailgun_webhook_signing_key,
         error_chat_id,
         allowed_senders,
+        db_connection,
     });
 
     let router = Router::new()
@@ -123,6 +124,7 @@ struct ServerState {
     mailgun_webhook_signing_key: String,
     error_chat_id: ChatId,
     allowed_senders: HashSet<String>,
+    db_connection: DatabaseConnection,
 }
 
 struct ServerError(anyhow::Error);
@@ -200,14 +202,25 @@ async fn receive_newsletter_email(
 
         let newsletter_entry =
             parse_email_body(payload.html_body).context("Could not parse email body")?;
-        let message = make_message(&newsletter_entry);
 
-        state
+        let mut saved_newsletter =
+            persist_newsletter_entry(&newsletter_entry, &state.db_connection)
+                .await
+                .context("Unable to persist newsletter entry")?;
+
+        let message_text = make_message(&newsletter_entry);
+        let message = state
             .bot
-            .send_message(Recipient::Id(state.channel_id), message)
+            .send_message(Recipient::Id(state.channel_id), message_text)
             .parse_mode(ParseMode::MarkdownV2)
             .await
             .context("Unable to send update message")?;
+
+        saved_newsletter.message_id = ActiveValue::Set(Some(message.id.0));
+        saved_newsletter
+            .save(&state.db_connection)
+            .await
+            .context("Unable to update newsletter with message id")?;
 
         Ok(())
     }
@@ -276,4 +289,74 @@ Prossime date:
     ",
         entry.title, formatted_dates
     )
+}
+
+async fn persist_newsletter_entry(
+    newsletter_entry: &NewsletterEntry,
+    connection: &DatabaseConnection,
+) -> anyhow::Result<entity::newsletter::ActiveModel> {
+    let newsletter = {
+        let newsletter = entity::newsletter::ActiveModel {
+            id: Default::default(),
+            link: ActiveValue::Set(newsletter_entry.newsletter_link.clone()),
+            message_id: Default::default(),
+        };
+
+        newsletter
+            .save(connection)
+            .await
+            .context("Unable to save newsletter")?
+    };
+
+    let (mut programs, program_entries): (Vec<_>, Vec<_>) = newsletter_entry
+        .programming_entries
+        .iter()
+        .map(|e| {
+            let program = entity::program::ActiveModel {
+                id: Default::default(),
+                newsletter_id: newsletter.id.clone(),
+                title: ActiveValue::Set(e.title.clone()),
+            };
+
+            let date_entries: Vec<_> = e
+                .date_entries
+                .iter()
+                .map(|e| entity::entry::ActiveModel {
+                    id: Default::default(),
+                    program_id: Default::default(),
+                    date: ActiveValue::Set(e.date.fixed_offset()),
+                    details: ActiveValue::Set(e.additional_details.clone()),
+                })
+                .collect();
+
+            (program, date_entries)
+        })
+        .collect();
+
+    let mut saved_programs = Vec::new();
+    for p in programs {
+        saved_programs.push(
+            p.save(connection)
+                .await
+                .context("Unable to save program!")?,
+        );
+    }
+    programs = saved_programs;
+
+    let entries_iter = program_entries
+        .into_iter()
+        .zip(programs.into_iter())
+        .flat_map(|(es, p)| {
+            es.into_iter().map(move |mut e| {
+                e.program_id = p.id.clone();
+                e
+            })
+        });
+
+    entity::entry::Entity::insert_many(entries_iter)
+        .exec(connection)
+        .await
+        .context("Unable to save entries!")?;
+
+    Ok(newsletter)
 }
