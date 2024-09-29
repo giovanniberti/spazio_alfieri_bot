@@ -12,6 +12,8 @@ use axum::routing::{get, post};
 use axum::{Form, Router};
 use hmac::{Hmac, Mac};
 use itertools::Itertools;
+use migration::{Migrator, MigratorTrait};
+use sea_orm::Database;
 use serde::Deserialize;
 use sha2::Sha256;
 use teloxide::prelude::*;
@@ -73,6 +75,22 @@ async fn main() -> anyhow::Result<()> {
 
     let mailgun_webhook_signing_key = std::env::var("MAILGUN_WEBHOOK_SIGNING_KEY")
         .context("Unable to get environment variable MAILGUN_WEBHOOK_SIGNING_KEY")?;
+
+    let db_host = std::env::var("POSTGRES_HOST")
+        .context("Unable to read POSTGRS_HOST environment variable")?;
+    let db_name =
+        std::env::var("POSTGRES_DB").context("Unable to read POSTGRES_DB environment variable")?;
+    let db_username = std::env::var("POSTGRES_USERNAME")
+        .context("Unable to read POSTGRES_USERNAME environment variable")?;
+    let db_password = std::env::var("POSTGRES_PASSWORD")
+        .context("Unable to read POSTGRES_PASSWORD environment variable")?;
+
+    let connection = Database::connect(format!(
+        "postgresql://{}:{}@{}/{}",
+        db_username, db_password, db_host, db_name
+    ))
+    .await?;
+    Migrator::up(&connection, None).await?;
 
     let server_state = Arc::new(ServerState {
         bot,
@@ -144,8 +162,8 @@ fn verify_mailgun_signature(
     timestamp: u64,
     signature: &str,
 ) -> anyhow::Result<()> {
-    let mut mac =
-        Hmac::<Sha256>::new_from_slice(signing_key.as_bytes()).expect("HMAC can take key of any size");
+    let mut mac = Hmac::<Sha256>::new_from_slice(signing_key.as_bytes())
+        .expect("HMAC can take key of any size");
     mac.update(format!("{}{}", timestamp, token).as_bytes());
 
     mac.verify_slice(&hex::decode(signature.as_bytes())?)

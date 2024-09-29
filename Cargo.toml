@@ -3,6 +3,9 @@ name = "spazio_alfieri_bot"
 version = "0.1.0"
 edition = "2021"
 
+[workspace]
+members = [".", "entity", "migration"]
+
 [dependencies]
 anyhow = "1.0.89"
 axum = { version = "0.7.6", features = ["macros", "form"] }
@@ -23,3 +26,6 @@ pest = "2.7.13"
 pest_derive = "2.7.13"
 dotenvy = "0.15.7"
 hex = "0.4.3"
+sea-orm = { version = "1.0.0-rc.5", features = [ "sqlx-postgres", "runtime-tokio-native-tls", "macros", "with-chrono" ] }
+entity = { path = "entity" }
+migration = { path = "migration" }

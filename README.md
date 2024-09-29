@@ -34,5 +34,9 @@ or from a `.env` file placed in the same directory as the executable:
 | CHANNEL_ID                  | Channel id where messages will be pusblished to                             |
 | ERROR_CHAT_ID               | Chat id for reporting error messages                                        |
 | ALLOWED_SENDERS             | Comma-separated list of allowed email senders (email addresses)             |
+| POSTGRES_HOST               | Host of PostgreSQL instance                                                 |
+| POSTGRES_DB                 | Database name                                                               |
+| POSTGRES_USER               | Username for connecting to database                                         |
+| POSTGRES_PASSWORD           | Password for connecting to database                                         |
 
 All environment variables are required.
