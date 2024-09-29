@@ -10,6 +10,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Form, Router};
+use chrono::Utc;
 use hmac::{Hmac, Mac};
 use itertools::Itertools;
 use migration::{Migrator, MigratorTrait};
@@ -259,26 +260,51 @@ _Nuovi film in arrivo allo Spazio Alfieri\\!_
 }
 
 fn format_message(entry: &ProgrammingEntry) -> String {
-    let formatted_dates = entry
+    let mut formats_with_dates = entry
         .date_entries
         .iter()
         .map(|date_entry| {
             let human_readable_date = date_entry.date.format("%d/%m/%Y");
             let human_readable_time = date_entry.date.format("%H:%M");
 
+            let strikethrough = {
+                if Utc::now() > date_entry.date {
+                    "~"
+                } else {
+                    ""
+                }
+            };
+
             // todo: make clock emoji represent time
-            format!(
-                " • 📆 {} 🕔 {} {}",
+            let formatted = format!(
+                " {}• 📆 {} 🕔 {}{}{}",
+                strikethrough,
                 human_readable_date,
                 human_readable_time,
                 date_entry
                     .additional_details
                     .as_ref()
-                    .map(|info| format!("_{}_", info))
+                    .map(|info| format!(" _{}_", info))
                     .as_deref()
-                    .unwrap_or("")
-            )
+                    .unwrap_or(""),
+                strikethrough,
+            );
+
+            (formatted, date_entry.date)
         })
+        .collect::<Vec<_>>();
+
+    let nearest_date = formats_with_dates
+        .iter_mut()
+        .find(|(_, date)| Utc::now() <= *date);
+
+    if let Some((formatted, _)) = nearest_date {
+        *formatted = format!("{} 🔔", formatted)
+    }
+
+    let formatted_dates = formats_with_dates
+        .into_iter()
+        .map(|(formatted, _)| formatted)
         .join("\n");
 
     format!(
