@@ -29,3 +29,4 @@ hex = "0.4.3"
 sea-orm = { version = "1.0.0-rc.5", features = [ "sqlx-postgres", "runtime-tokio-native-tls", "macros", "with-chrono" ] }
 entity = { path = "entity" }
 migration = { path = "migration" }
+axum-auth = "0.7.0"

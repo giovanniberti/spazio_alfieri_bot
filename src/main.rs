@@ -4,12 +4,13 @@ use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use anyhow::{anyhow, Context};
+use anyhow::{anyhow, bail, Context};
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Form, Router};
+use axum_auth::AuthBearer;
 use chrono::Utc;
 use chrono_tz::Europe;
 use hmac::{Hmac, Mac};
@@ -81,6 +82,9 @@ async fn main() -> anyhow::Result<()> {
     let mailgun_webhook_signing_key = std::env::var("MAILGUN_WEBHOOK_SIGNING_KEY")
         .context("Unable to get environment variable MAILGUN_WEBHOOK_SIGNING_KEY")?;
 
+    let update_token = std::env::var("UPDATE_TOKEN")
+        .context("Unable to read UPDATE_TOKEN environment variable")?;
+
     let db_host = std::env::var("POSTGRES_HOST")
         .context("Unable to read POSTGRS_HOST environment variable")?;
     let db_name =
@@ -104,6 +108,7 @@ async fn main() -> anyhow::Result<()> {
         error_chat_id,
         allowed_senders,
         db_connection,
+        update_token,
     });
 
     let router = Router::new()
@@ -131,6 +136,7 @@ struct ServerState {
     error_chat_id: ChatId,
     allowed_senders: HashSet<String>,
     db_connection: DatabaseConnection,
+    update_token: String,
 }
 
 struct ServerError(anyhow::Error);
@@ -248,8 +254,13 @@ async fn receive_newsletter_email(
 
 async fn update_latest_newsletter_message(
     State(state): State<Arc<ServerState>>,
+    AuthBearer(token): AuthBearer,
 ) -> Result<(), ServerError> {
-    async fn do_update(state: Arc<ServerState>) -> anyhow::Result<()> {
+    async fn do_update(state: Arc<ServerState>, token: String) -> anyhow::Result<()> {
+        if token != state.update_token {
+            bail!("Invalid token");
+        }
+
         let (newsletter, message_id) = fetch_latest_newsletter(&state.db_connection)
             .await
             .context("Unable to get latest newsletter from db")?;
@@ -266,7 +277,7 @@ async fn update_latest_newsletter_message(
         Ok(())
     }
 
-    if let Err(e) = do_update(state.clone()).await {
+    if let Err(e) = do_update(state.clone(), token).await {
         error!("{:#}", e);
 
         state
