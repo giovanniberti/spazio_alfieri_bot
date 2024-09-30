@@ -11,20 +11,24 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Form, Router};
 use chrono::Utc;
+use chrono_tz::Europe;
 use hmac::{Hmac, Mac};
 use itertools::Itertools;
 use migration::{Migrator, MigratorTrait};
-use sea_orm::{ActiveModelTrait, ActiveValue, Database, DatabaseConnection, EntityTrait};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue, Database, DatabaseConnection, EntityTrait, LoaderTrait,
+    ModelTrait, QueryOrder,
+};
 use serde::Deserialize;
 use sha2::Sha256;
 use teloxide::prelude::*;
-use teloxide::types::{ParseMode, Recipient};
+use teloxide::types::{MessageId, ParseMode, Recipient};
 use tracing::level_filters::LevelFilter;
 use tracing::{error, info};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{EnvFilter, Layer};
 
-use crate::parser::{parse_email_body, NewsletterEntry, ProgrammingEntry};
+use crate::parser::{parse_email_body, DateEntry, NewsletterEntry, ProgrammingEntry};
 
 mod parser;
 
@@ -105,6 +109,7 @@ async fn main() -> anyhow::Result<()> {
     let router = Router::new()
         .route("/health", get(health))
         .route("/mail", post(receive_newsletter_email))
+        .route("/update", post(update_latest_newsletter_message))
         .with_state(server_state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
@@ -231,7 +236,7 @@ async fn receive_newsletter_email(
 
         let bot = &state.bot;
         bot.send_message(
-            Recipient::Id(state.error_chat_id),
+            state.error_chat_id,
             format!("Got error while handling email: {:#}", e.0),
         )
         .await
@@ -241,11 +246,98 @@ async fn receive_newsletter_email(
     Ok(())
 }
 
+async fn update_latest_newsletter_message(
+    State(state): State<Arc<ServerState>>,
+) -> Result<(), ServerError> {
+    async fn do_update(state: Arc<ServerState>) -> anyhow::Result<()> {
+        let (newsletter, message_id) = fetch_latest_newsletter(&state.db_connection)
+            .await
+            .context("Unable to get latest newsletter from db")?;
+
+        let updated_text = make_message(&newsletter);
+
+        state
+            .bot
+            .edit_message_text(state.channel_id, message_id, updated_text)
+            .parse_mode(ParseMode::MarkdownV2)
+            .await
+            .context("Unable to update message")?;
+
+        Ok(())
+    }
+
+    if let Err(e) = do_update(state.clone()).await {
+        error!("{:#}", e);
+
+        state
+            .bot
+            .send_message(
+                state.error_chat_id,
+                format!("Got error while updating newsletter message: {:#}", e),
+            )
+            .await
+            .context("Unable to send error message")?;
+    }
+
+    Ok(())
+}
+
+async fn fetch_latest_newsletter(
+    db_connection: &DatabaseConnection,
+) -> anyhow::Result<(NewsletterEntry, MessageId)> {
+    let latest_newsletter = entity::newsletter::Entity::find()
+        .order_by_desc(entity::newsletter::Column::CreatedAt)
+        .one(db_connection)
+        .await
+        .context("Could not fetch latest newsletter from db")?
+        .ok_or(anyhow!("No newsletters in db"))?;
+
+    let newsletter_programs = latest_newsletter
+        .find_related(entity::program::Entity)
+        .all(db_connection)
+        .await
+        .context("Could not fetch newsletter programs")?;
+
+    let program_entries = newsletter_programs
+        .load_many(entity::entry::Entity, db_connection)
+        .await
+        .context("Could not fetch program entries")?;
+
+    let programming_entries: Vec<_> = newsletter_programs
+        .into_iter()
+        .zip(program_entries)
+        .map(|(program, entries)| ProgrammingEntry {
+            title: program.title,
+            date_entries: entries
+                .into_iter()
+                .map(|e| DateEntry {
+                    date: e.date.with_timezone(&Europe::Rome),
+                    additional_details: e.details,
+                })
+                .collect(),
+        })
+        .collect();
+
+    let newsletter = NewsletterEntry {
+        programming_entries,
+        newsletter_link: latest_newsletter.link,
+    };
+
+    Ok((
+        newsletter,
+        MessageId(
+            latest_newsletter
+                .message_id
+                .ok_or(anyhow!("Message id for newsletter is not set"))?,
+        ),
+    ))
+}
+
 fn make_message(newsletter_entry: &NewsletterEntry) -> String {
     let entries_text = newsletter_entry
         .programming_entries
         .iter()
-        .map(format_message)
+        .map(format_programming_entry)
         .join("\n\n");
     format!(
         "\
@@ -259,7 +351,7 @@ _Nuovi film in arrivo allo Spazio Alfieri\\!_
     )
 }
 
-fn format_message(entry: &ProgrammingEntry) -> String {
+fn format_programming_entry(entry: &ProgrammingEntry) -> String {
     let mut formats_with_dates = entry
         .date_entries
         .iter()
