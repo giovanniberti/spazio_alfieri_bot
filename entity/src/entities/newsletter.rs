@@ -10,6 +10,7 @@ pub struct Model {
     #[sea_orm(unique)]
     pub link: String,
     pub message_id: Option<i32>,
+    pub created_at: DateTimeWithTimeZone,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

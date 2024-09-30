@@ -326,6 +326,7 @@ async fn persist_newsletter_entry(
             id: Default::default(),
             link: ActiveValue::Set(newsletter_entry.newsletter_link.clone()),
             message_id: Default::default(),
+            created_at: Default::default(),
         };
 
         newsletter
