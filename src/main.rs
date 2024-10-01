@@ -438,40 +438,43 @@ async fn persist_newsletter_entry(
             .context("Unable to save newsletter")?
     };
 
-    let (mut programs, program_entries): (Vec<_>, Vec<_>) = newsletter_entry
-        .programming_entries
-        .iter()
-        .map(|e| {
-            let program = entity::program::ActiveModel {
-                id: Default::default(),
-                newsletter_id: newsletter.id.clone(),
-                title: ActiveValue::Set(e.title.clone()),
-            };
-
-            let date_entries: Vec<_> = e
-                .date_entries
-                .iter()
-                .map(|e| entity::entry::ActiveModel {
+    let (programs, program_entries) = {
+        let (programs, program_entries): (Vec<_>, Vec<_>) = newsletter_entry
+            .programming_entries
+            .iter()
+            .map(|e| {
+                let program = entity::program::ActiveModel {
                     id: Default::default(),
-                    program_id: Default::default(),
-                    date: ActiveValue::Set(e.date.fixed_offset()),
-                    details: ActiveValue::Set(e.additional_details.clone()),
-                })
-                .collect();
+                    newsletter_id: newsletter.id.clone(),
+                    title: ActiveValue::Set(e.title.clone()),
+                };
 
-            (program, date_entries)
-        })
-        .collect();
+                let date_entries: Vec<_> = e
+                    .date_entries
+                    .iter()
+                    .map(|e| entity::entry::ActiveModel {
+                        id: Default::default(),
+                        program_id: Default::default(),
+                        date: ActiveValue::Set(e.date.fixed_offset()),
+                        details: ActiveValue::Set(e.additional_details.clone()),
+                    })
+                    .collect();
 
-    let mut saved_programs = Vec::new();
-    for p in programs {
-        saved_programs.push(
-            p.save(connection)
-                .await
-                .context("Unable to save program!")?,
-        );
-    }
-    programs = saved_programs;
+                (program, date_entries)
+            })
+            .collect();
+
+        let mut saved_programs = Vec::new();
+        for p in programs {
+            saved_programs.push(
+                p.save(connection)
+                    .await
+                    .context("Unable to save program!")?,
+            );
+        }
+
+        (saved_programs, program_entries)
+    };
 
     let entries_iter = program_entries
         .into_iter()
