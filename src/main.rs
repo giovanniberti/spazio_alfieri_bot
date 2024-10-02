@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use crate::crontap::types::{AddSchedule, Timezone, Verb};
+use crate::crontap::types::{AddSchedule, Timezone};
 use crate::crontap::Client;
 use anyhow::{anyhow, bail, ensure, Context};
 use axum::extract::State;
@@ -474,7 +474,7 @@ async fn update_schedules(
             label: BOT_SCHEDULE_LABEL.to_string(),
             timezone: Timezone("Europe/Rome".to_string()),
             url: webhook_update_url.to_string(),
-            verb: Verb::Post,
+            verb: "POST".to_string(),
         };
         state
             .crontap_client

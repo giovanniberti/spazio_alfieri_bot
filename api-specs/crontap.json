@@ -693,7 +693,7 @@
             "example": "https://example.com"
           },
           "verb": {
-            "$ref": "#/components/schemas/Verb"
+            "type": "string"
           },
           "interval": {
             "type": "string",
