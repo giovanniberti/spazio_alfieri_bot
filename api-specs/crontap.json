@@ -1,0 +1,740 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Crontap API",
+    "description": "Crontap allows scheduling highly configurable API calls.\n      See more on [crontap.com ↗️](https://crontap.com)  \n _Authentication_ \n All endpoints are authenticated. Authentication is done via the `ApiKey` & `ClientId` headers. \n You can obtain credentials by logging in to your account.\n    ",
+    "version": "1.0.2"
+  },
+  "servers": [
+    {
+      "url": "https://cron.apihustle.com/"
+    }
+  ],
+  "paths": {
+    "/v1/schedule/{scheduleId}": {
+      "get": {
+        "operationId": "getScheduleById",
+        "tags": [
+          "Schedule"
+        ],
+        "summary": "Get a schedule by id",
+        "description": "Returns a full schedule object if the matching id is found.",
+        "parameters": [
+          {
+            "name": "scheduleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ClientId",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ApiKey",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Schedule object.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Schedule"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKey": [],
+            "ClientId": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "updateScheduleById",
+        "tags": [
+          "Schedule"
+        ],
+        "summary": "Update a schedule",
+        "description": "Allows updating a schedule with the provided configuration if found.  __NB 🤚__ this replaces all properties of the previous schedule (PUT not PATCH). Make sure to provide any existing configuration. Use PATCH to update properties in place. Returns the updated schedule.",
+        "parameters": [
+          {
+            "name": "scheduleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ClientId",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ApiKey",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "📝 Notes \n __interval__ is the cron interval e.g. __* * * * *__. Get help in [CronTool ↗️](https://tool.crontap.com/cronjob-debugger) \n __timezone__ is the timezone the interval should run in. See [cron.apihustle.com/timezones](https://cron.apihustle.com/timezones) for a list of all timezones. \n __headers__ are optional and can be used to send custom headers with the request. \n __data__ is optional and can be used to send custom payload with the request. \n __integrations__ are optional and can be used to send a request to a third party or your own API when the schedule is triggered (successfully or not depending on the __callOnSuccess__ option). \n __label__ is optional and only used to easier identify a schedule",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddSchedule"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "description": "Schedule object.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Schedule"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKey": [],
+            "ClientId": []
+          }
+        ],
+        "x-codegen-request-body-name": "schedule"
+      },
+      "delete": {
+        "operationId": "deleteScheduleById",
+        "tags": [
+          "Schedule"
+        ],
+        "summary": "Delete a schedule by id",
+        "description": "Deletes a schedule if found. This permanently disabled the schedule but soft deletes the schedule object (metadata is kept even after deletion).",
+        "parameters": [
+          {
+            "name": "scheduleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ClientId",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ApiKey",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted schedule object.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKey": [],
+            "ClientId": []
+          }
+        ]
+      }
+    },
+    "/v1/schedule": {
+      "post": {
+        "operationId": "createSchedule",
+        "tags": [
+          "Schedule"
+        ],
+        "summary": "Create a schedule",
+        "description": "Allows submitting a new schedule with the provided configuration. Returns the created schedule.",
+        "parameters": [
+          {
+            "name": "ClientId",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ApiKey",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "📝 Notes \n __interval__ is the cron interval e.g. __* * * * *__. Get help in [CronTool ↗️](https://tool.crontap.com/cronjob-debugger) \n __timezone__ is the timezone the interval should run in. See [cron.apihustle.com/timezones](https://cron.apihustle.com/timezones) for a list of all timezones. \n __headers__ are optional and can be used to send custom headers with the request. \n __data__ is optional and can be used to send custom payload with the request. \n __integrations__ are optional and can be used to send a request to a third party or your own API when the schedule is triggered (successfully or not depending on the __callOnSuccess__ option). \n __label__ is optional and only used to easier identify a schedule",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddSchedule"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "description": "Schedule object.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Schedule"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKey": [],
+            "ClientId": []
+          }
+        ],
+        "x-codegen-request-body-name": "schedule"
+      }
+    },
+    "/v1/schedules": {
+      "get": {
+        "operationId": "listSchedules",
+        "tags": [
+          "Schedule List"
+        ],
+        "summary": "List schedules",
+        "description": "Returns a list of schedules.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "The maximum number of schedules to return. Defaults to 100.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "orderBy",
+            "in": "query",
+            "description": "The field to order the schedules by. Available options are: url, label, createdAt, updatedAt. Defaults to url.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "orderDirection",
+            "in": "query",
+            "description": "The direction to order the schedules by. Available options are: asc, desc. Defaults to asc.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ClientId",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ApiKey",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A list of schedule objects.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKey": [],
+            "ClientId": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "example": "Error message"
+          }
+        }
+      },
+      "Success": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          }
+        }
+      },
+      "KeyValue": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "example": "Value"
+          }
+        }
+      },
+      "Verb": {
+        "type": "string",
+        "enum": [
+          "GET",
+          "POST",
+          "PUT",
+          "PATCH",
+          "DELETE",
+          "OPTIONS",
+          "HEAD"
+        ]
+      },
+      "Timezone": {
+        "type": "string",
+      },
+      "IntegrationSettingType": {
+        "type": "string",
+        "enum": [
+          "WEBHOOK"
+        ]
+      },
+      "ScheduleStatus": {
+        "type": "string",
+        "enum": [
+          "enabled",
+          "disabled",
+          "deleted"
+        ]
+      },
+      "IntegrationSetting": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "xxx"
+          },
+          "type": {
+            "$ref": "#/components/schemas/IntegrationSettingType"
+          },
+          "name": {
+            "type": "string",
+            "example": "My integration"
+          },
+          "url": {
+            "type": "string",
+            "example": "https://example.com"
+          },
+          "includeScheduleUrlInCallback": {
+            "type": "boolean",
+            "example": false
+          },
+          "callOnSuccess": {
+            "type": "boolean",
+            "example": false
+          }
+        }
+      },
+      "Schedule": {
+        "required": [
+          "createdAt",
+          "id",
+          "interval",
+          "label",
+          "status",
+          "timezone",
+          "url",
+          "verb"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "xxx"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ScheduleStatus"
+          },
+          "url": {
+            "type": "string",
+            "example": "https://example.com"
+          },
+          "verb": {
+            "$ref": "#/components/schemas/Verb"
+          },
+          "interval": {
+            "type": "string",
+            "example": "* * * * *"
+          },
+          "timezone": {
+            "$ref": "#/components/schemas/Timezone"
+          },
+          "createdAt": {
+            "type": "string",
+            "example": "2021-01-01T00:00:00.000Z"
+          },
+          "updatedAt": {
+            "type": "string",
+            "example": "2021-01-01T00:00:00.000Z"
+          },
+          "headers": {
+            "$ref": "#/components/schemas/KeyValue"
+          },
+          "data": {
+            "$ref": "#/components/schemas/KeyValue"
+          },
+          "integrations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IntegrationSetting"
+            }
+          },
+          "label": {
+            "type": "string",
+            "example": "My Schedule"
+          }
+        }
+      },
+      "ScheduleList": {
+        "type": "object",
+        "properties": {
+          "schedules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Schedule"
+            }
+          }
+        }
+      },
+      "AddIntegrationSetting": {
+        "required": [
+          "callOnSuccess",
+          "includeScheduleUrlInCallback",
+          "name",
+          "type",
+          "url"
+        ],
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/IntegrationSettingType"
+          },
+          "name": {
+            "type": "string",
+            "example": "My integration"
+          },
+          "url": {
+            "type": "string",
+            "example": "https://example.com"
+          },
+          "includeScheduleUrlInCallback": {
+            "type": "boolean",
+            "example": false
+          },
+          "callOnSuccess": {
+            "type": "boolean",
+            "example": false
+          }
+        }
+      },
+      "AddSchedule": {
+        "required": [
+          "interval",
+          "label",
+          "timezone",
+          "url",
+          "verb"
+        ],
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "example": "https://example.com"
+          },
+          "verb": {
+            "$ref": "#/components/schemas/Verb"
+          },
+          "interval": {
+            "type": "string",
+            "example": "* * * * *"
+          },
+          "timezone": {
+            "$ref": "#/components/schemas/Timezone"
+          },
+          "headers": {
+            "$ref": "#/components/schemas/KeyValue"
+          },
+          "integrations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AddIntegrationSetting"
+            }
+          },
+          "data": {
+            "$ref": "#/components/schemas/KeyValue"
+          },
+          "label": {
+            "type": "string",
+            "example": "My Schedule"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "ApiKey": {
+        "type": "apiKey",
+        "description": "The ApiKey header grants access to the API.  You can obtain credentials by logging in to your account",
+        "name": "ApiKey",
+        "in": "header"
+      },
+      "ClientId": {
+        "type": "apiKey",
+        "description": "The ClientId header identifies your account",
+        "name": "ClientId",
+        "in": "header"
+      }
+    }
+  },
+  "x-original-swagger-version": "2.0"
+}

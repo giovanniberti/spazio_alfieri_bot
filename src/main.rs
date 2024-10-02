@@ -4,18 +4,21 @@ use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use anyhow::{anyhow, bail, Context};
+use crate::crontap::types::{AddSchedule, Timezone, Verb};
+use crate::crontap::Client;
+use anyhow::{anyhow, bail, ensure, Context};
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Form, Router};
 use axum_auth::AuthBearer;
-use chrono::Utc;
+use chrono::{Datelike, Timelike, Utc};
 use chrono_tz::Europe;
 use hmac::{Hmac, Mac};
 use itertools::Itertools;
 use migration::{Migrator, MigratorTrait};
+use reqwest::Url;
 use sea_orm::{
     ActiveModelTrait, ActiveValue, Database, DatabaseConnection, EntityTrait, LoaderTrait,
     ModelTrait, QueryOrder,
@@ -24,6 +27,7 @@ use serde::Deserialize;
 use sha2::Sha256;
 use teloxide::prelude::*;
 use teloxide::types::{MessageId, ParseMode, Recipient};
+use tokio::task::JoinSet;
 use tracing::level_filters::LevelFilter;
 use tracing::{error, info};
 use tracing_subscriber::layer::SubscriberExt;
@@ -31,6 +35,7 @@ use tracing_subscriber::{EnvFilter, Layer};
 
 use crate::parser::{parse_email_body, DateEntry, NewsletterEntry, ProgrammingEntry};
 
+mod crontap;
 mod parser;
 
 #[tokio::main]
@@ -85,8 +90,27 @@ async fn main() -> anyhow::Result<()> {
     let update_token = std::env::var("UPDATE_TOKEN")
         .context("Unable to read UPDATE_TOKEN environment variable")?;
 
+    let crontap_client_id = std::env::var("CRONTAP_CLIENT_ID")
+        .context("Unable to read CRONTAP_CLIENT_ID environment variable")?;
+
+    let crontap_api_key = std::env::var("CRONTAP_API_KEY")
+        .context("Unable to read CRONTAP_API_KEY environment variable")?;
+
+    let crontap_client = Client::new("https://cron.apihustle.com/");
+
+    let host_baseurl = {
+        let raw = std::env::var("HOST_BASEURL")
+            .context("Unable to read HOST_BASEURL environment variable")?;
+
+        Url::parse(&raw)
+            .with_context(|| format!("Unable to parse host baseurl '{}' as URL", raw))?
+    };
+    let webhook_update_url = host_baseurl
+        .join("/update")
+        .context("Unable to join update path to host baseurl")?;
+
     let db_host = std::env::var("POSTGRES_HOST")
-        .context("Unable to read POSTGRS_HOST environment variable")?;
+        .context("Unable to read POSTGRES_HOST environment variable")?;
     let db_name =
         std::env::var("POSTGRES_DB").context("Unable to read POSTGRES_DB environment variable")?;
     let db_username = std::env::var("POSTGRES_USERNAME")
@@ -109,6 +133,10 @@ async fn main() -> anyhow::Result<()> {
         allowed_senders,
         db_connection,
         update_token,
+        crontap_client,
+        crontap_client_id,
+        crontap_api_key,
+        webhook_update_url,
     });
 
     let router = Router::new()
@@ -137,6 +165,10 @@ struct ServerState {
     allowed_senders: HashSet<String>,
     db_connection: DatabaseConnection,
     update_token: String,
+    crontap_client: Client,
+    crontap_client_id: String,
+    crontap_api_key: String,
+    webhook_update_url: Url,
 }
 
 struct ServerError(anyhow::Error);
@@ -267,12 +299,50 @@ async fn update_latest_newsletter_message(
 
         let updated_text = make_message(&newsletter);
 
-        state
-            .bot
-            .edit_message_text(state.channel_id, message_id, updated_text)
-            .parse_mode(ParseMode::MarkdownV2)
+        let mut joinset: JoinSet<anyhow::Result<()>> = JoinSet::new();
+        let _state = state.clone();
+        let _message_id = message_id.clone();
+        joinset.spawn(async move {
+            let state = _state;
+            let message_id = _message_id;
+            let updated_text = updated_text;
+            state
+                .bot
+                .edit_message_text(state.channel_id, message_id, updated_text)
+                .parse_mode(ParseMode::MarkdownV2)
+                .await
+                .context("Unable to update message")?;
+
+            Ok(())
+        });
+
+        let _state = state.clone();
+        joinset.spawn(async move {
+            let state = _state;
+            let newsletter = newsletter;
+            update_schedules(
+                state.clone(),
+                &state.crontap_client_id,
+                &state.crontap_api_key,
+                newsletter,
+            )
             .await
-            .context("Unable to update message")?;
+            .context("Unable to update schedules")?;
+
+            Ok(())
+        });
+
+        let results = joinset.join_all().await;
+
+        if !results.is_empty() {
+            let error_string = results
+                .into_iter()
+                .filter_map(|r| r.err())
+                .map(|e| format!("{:?}", e))
+                .join("\n");
+
+            bail!("{}", error_string);
+        }
 
         Ok(())
     }
@@ -342,6 +412,95 @@ async fn fetch_latest_newsletter(
                 .ok_or(anyhow!("Message id for newsletter is not set"))?,
         ),
     ))
+}
+
+async fn update_schedules(
+    state: Arc<ServerState>,
+    client_id: &str,
+    api_key: &str,
+    newsletter_entry: NewsletterEntry,
+) -> anyhow::Result<()> {
+    const BOT_SCHEDULE_LABEL: &str = "bot_schedule";
+    let schedules = state
+        .crontap_client
+        .list_schedules(None, None, None, Some(api_key), Some(client_id))
+        .await
+        .context("Unable to list schedules from crontap")?
+        .into_inner()
+        .schedules;
+
+    let bot_schedules = schedules
+        .into_iter()
+        .filter(|s| s.label == BOT_SCHEDULE_LABEL)
+        .collect::<Vec<_>>();
+
+    ensure!(!bot_schedules.is_empty(), "Unable to find any bot schedule");
+
+    let mut joinset: JoinSet<anyhow::Result<()>> = JoinSet::new();
+    let client_id = Arc::new(Some(String::from(client_id)));
+    let api_key = Arc::new(Some(String::from(api_key)));
+    for schedule in bot_schedules {
+        let state = state.clone();
+        let client_id = client_id.clone();
+        let api_key = api_key.clone();
+        joinset.spawn(async move {
+            state
+                .crontap_client
+                .delete_schedule_by_id(&schedule.id, client_id.as_deref(), api_key.as_deref())
+                .await
+                .context("Unable to delete bot schedule")?;
+
+            Ok(())
+        });
+    }
+    joinset.spawn(async move {
+        let webhook_update_url = state.webhook_update_url.clone();
+        let mut date_entries = newsletter_entry
+            .programming_entries
+            .into_iter()
+            .flat_map(|p| p.date_entries)
+            .collect::<Vec<_>>();
+        date_entries.sort_by_key(|d| d.date);
+        let next_update_time = &date_entries[0].date;
+        let added_schedule: AddSchedule = AddSchedule {
+            data: None,
+            headers: None,
+            integrations: vec![],
+            interval: format!(
+                "{} {} {} {} *",
+                next_update_time.minute(),
+                next_update_time.hour(),
+                next_update_time.day(),
+                next_update_time.month()
+            ),
+            label: BOT_SCHEDULE_LABEL.to_string(),
+            timezone: Timezone("Europe/Rome".to_string()),
+            url: webhook_update_url.to_string(),
+            verb: Verb::Post,
+        };
+        state
+            .crontap_client
+            .create_schedule(api_key.as_deref(), client_id.as_deref(), &added_schedule)
+            .await
+            .context("Error while creating schedule")?;
+
+        Ok(())
+    });
+
+    let results = joinset
+        .join_all()
+        .await
+        .into_iter()
+        .filter_map(|r| r.err())
+        .collect::<Vec<_>>();
+
+    if !results.is_empty() {
+        let error_string = results.into_iter().map(|e| format!("{:#}", e)).join("\n");
+
+        bail!("Errors when udpating schedules: {}", error_string);
+    }
+
+    Ok(())
 }
 
 fn make_message(newsletter_entry: &NewsletterEntry) -> String {
