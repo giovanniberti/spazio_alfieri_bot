@@ -301,10 +301,8 @@ async fn update_latest_newsletter_message(
 
         let mut joinset: JoinSet<anyhow::Result<()>> = JoinSet::new();
         let _state = state.clone();
-        let _message_id = message_id.clone();
         joinset.spawn(async move {
             let state = _state;
-            let message_id = _message_id;
             let updated_text = updated_text;
             state
                 .bot
