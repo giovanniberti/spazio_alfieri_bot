@@ -519,18 +519,6 @@
           }
         }
       },
-      "Verb": {
-        "type": "string",
-        "enum": [
-          "GET",
-          "POST",
-          "PUT",
-          "PATCH",
-          "DELETE",
-          "OPTIONS",
-          "HEAD"
-        ]
-      },
       "Timezone": {
         "type": "string",
       },
@@ -601,7 +589,7 @@
             "example": "https://example.com"
           },
           "verb": {
-            "$ref": "#/components/schemas/Verb"
+            "type": "string"
           },
           "interval": {
             "type": "string",
