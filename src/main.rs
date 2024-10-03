@@ -453,34 +453,37 @@ async fn update_schedules(
     }
     joinset.spawn(async move {
         let webhook_update_url = state.webhook_update_url.clone();
-        let mut date_entries = newsletter_entry
+        let next_update_time = newsletter_entry
             .programming_entries
             .into_iter()
             .flat_map(|p| p.date_entries)
-            .collect::<Vec<_>>();
-        date_entries.sort_by_key(|d| d.date);
-        let next_update_time = &date_entries[0].date;
-        let added_schedule: AddSchedule = AddSchedule {
-            data: None,
-            headers: None,
-            integrations: None,
-            interval: format!(
-                "{} {} {} {} *",
-                next_update_time.minute(),
-                next_update_time.hour(),
-                next_update_time.day(),
-                next_update_time.month()
-            ),
-            label: BOT_SCHEDULE_LABEL.to_string(),
-            timezone: Timezone("Europe/Rome".to_string()),
-            url: webhook_update_url.to_string(),
-            verb: "POST".to_string(),
-        };
-        state
-            .crontap_client
-            .create_schedule(api_key.as_deref(), client_id.as_deref(), &added_schedule)
-            .await
-            .context("Error while creating schedule")?;
+            .map(|d| d.date)
+            .sorted()
+            .find(|d| d >= &Utc::now());
+
+        if let Some(next_update_time) = next_update_time {
+            let added_schedule: AddSchedule = AddSchedule {
+                data: None,
+                headers: None,
+                integrations: None,
+                interval: format!(
+                    "{} {} {} {} *",
+                    next_update_time.minute(),
+                    next_update_time.hour(),
+                    next_update_time.day(),
+                    next_update_time.month()
+                ),
+                label: BOT_SCHEDULE_LABEL.to_string(),
+                timezone: Timezone("Europe/Rome".to_string()),
+                url: webhook_update_url.to_string(),
+                verb: "POST".to_string(),
+            };
+            state
+                .crontap_client
+                .create_schedule(api_key.as_deref(), client_id.as_deref(), &added_schedule)
+                .await
+                .context("Error while creating schedule")?;
+        }
 
         Ok(())
     });
