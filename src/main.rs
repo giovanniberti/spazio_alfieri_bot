@@ -266,6 +266,10 @@ async fn receive_newsletter_email(
             .await
             .context("Unable to update newsletter with message id")?;
 
+        update_schedules(state, newsletter_entry)
+            .await
+            .context("Unable to update schedules")?;
+
         Ok(())
     }
 
@@ -318,14 +322,9 @@ async fn update_latest_newsletter_message(
         joinset.spawn(async move {
             let state = _state;
             let newsletter = newsletter;
-            update_schedules(
-                state.clone(),
-                &state.crontap_client_id,
-                &state.crontap_api_key,
-                newsletter,
-            )
-            .await
-            .context("Unable to update schedules")?;
+            update_schedules(state.clone(), newsletter)
+                .await
+                .context("Unable to update schedules")?;
 
             Ok(())
         });
@@ -414,14 +413,18 @@ async fn fetch_latest_newsletter(
 
 async fn update_schedules(
     state: Arc<ServerState>,
-    client_id: &str,
-    api_key: &str,
     newsletter_entry: NewsletterEntry,
 ) -> anyhow::Result<()> {
     const BOT_SCHEDULE_LABEL: &str = "bot_schedule";
     let schedules = state
         .crontap_client
-        .list_schedules(None, None, None, Some(api_key), Some(client_id))
+        .list_schedules(
+            None,
+            None,
+            None,
+            Some(&state.crontap_api_key),
+            Some(&state.crontap_client_id),
+        )
         .await
         .context("Unable to list schedules from crontap")?
         .into_inner()
@@ -435,16 +438,16 @@ async fn update_schedules(
     ensure!(!bot_schedules.is_empty(), "Unable to find any bot schedule");
 
     let mut joinset: JoinSet<anyhow::Result<()>> = JoinSet::new();
-    let client_id = Arc::new(Some(String::from(client_id)));
-    let api_key = Arc::new(Some(String::from(api_key)));
     for schedule in bot_schedules {
         let state = state.clone();
-        let client_id = client_id.clone();
-        let api_key = api_key.clone();
         joinset.spawn(async move {
             state
                 .crontap_client
-                .delete_schedule_by_id(&schedule.id, client_id.as_deref(), api_key.as_deref())
+                .delete_schedule_by_id(
+                    &schedule.id,
+                    Some(&state.crontap_client_id),
+                    Some(&state.crontap_api_key),
+                )
                 .await
                 .context("Unable to delete bot schedule")?;
 
@@ -480,7 +483,11 @@ async fn update_schedules(
             };
             state
                 .crontap_client
-                .create_schedule(api_key.as_deref(), client_id.as_deref(), &added_schedule)
+                .create_schedule(
+                    Some(&state.crontap_api_key),
+                    Some(&state.crontap_client_id),
+                    &added_schedule,
+                )
                 .await
                 .context("Error while creating schedule")?;
         }
