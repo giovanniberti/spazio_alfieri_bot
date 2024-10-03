@@ -463,7 +463,7 @@ async fn update_schedules(
         let added_schedule: AddSchedule = AddSchedule {
             data: None,
             headers: None,
-            integrations: vec![],
+            integrations: None,
             interval: format!(
                 "{} {} {} {} *",
                 next_update_time.minute(),

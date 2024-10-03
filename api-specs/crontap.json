@@ -614,6 +614,7 @@
           },
           "integrations": {
             "type": "array",
+            "nullable": true,
             "items": {
               "$ref": "#/components/schemas/IntegrationSetting"
             }
@@ -695,6 +696,7 @@
           },
           "integrations": {
             "type": "array",
+            "nullable": true,
             "items": {
               "$ref": "#/components/schemas/AddIntegrationSetting"
             }
