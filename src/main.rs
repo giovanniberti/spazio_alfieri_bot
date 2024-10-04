@@ -1,10 +1,10 @@
 #![feature(iter_array_chunks)]
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
 
-use crate::crontap::types::{AddSchedule, Timezone};
+use crate::crontap::types::{AddSchedule, KeyValue, Timezone};
 use crate::crontap::Client;
 use anyhow::{anyhow, bail, ensure, Context};
 use axum::extract::State;
@@ -465,9 +465,17 @@ async fn update_schedules(
             .find(|d| d >= &Utc::now());
 
         if let Some(next_update_time) = next_update_time {
+            let headers = {
+                let mut m = HashMap::new();
+                m.insert(
+                    "Authorization".to_string(),
+                    format!("Bearer {}", state.update_token),
+                );
+                m
+            };
             let added_schedule: AddSchedule = AddSchedule {
                 data: None,
-                headers: None,
+                headers: Some(KeyValue(headers)),
                 integrations: None,
                 interval: format!(
                     "{} {} {} {} *",

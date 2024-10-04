@@ -512,15 +512,12 @@
       },
       "KeyValue": {
         "type": "object",
-        "properties": {
-          "key": {
-            "type": "string",
-            "example": "Value"
-          }
+        "additionalProperties": {
+          "type": "string"
         }
       },
       "Timezone": {
-        "type": "string",
+        "type": "string"
       },
       "IntegrationSettingType": {
         "type": "string",
