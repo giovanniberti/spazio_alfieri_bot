@@ -5,7 +5,8 @@ and forwards its content to a given channel.
 
 Written with [Rust](https://rust-lang.org) using the [Teloxide](https://docs.rs/teloxide) library.
 
-The bot uses [MailGun](https://www.mailgun.com/) under the hood to receive email bodies.
+The bot uses [MailGun](https://www.mailgun.com/) under the hood to receive email bodies and [Crontap](https://crontap.com/)
+to automatically schedule invocations to the `/update` endpoint as a webhook.
 
 ## Building and running
 
@@ -38,5 +39,9 @@ or from a `.env` file placed in the same directory as the executable:
 | POSTGRES_DB                 | Database name                                                               |
 | POSTGRES_USER               | Username for connecting to database                                         |
 | POSTGRES_PASSWORD           | Password for connecting to database                                         |
+| UPDATE_TOKEN                | Authentication token used to invoke update webhook                          |
+| CRONTAP_CLIENT_ID           | Client id for Crontap, used to schedule update webhook                      |
+| CRONTAP_API_KEY             | API Key for Crontap, used to schedule update webhook                        |
+| HOST_BASEURL                | Baseurl for update webhook                                                  |
 
 All environment variables are required.
