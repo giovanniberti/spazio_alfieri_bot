@@ -1,9 +1,5 @@
 #![feature(iter_array_chunks)]
 
-use std::collections::{HashMap, HashSet};
-use std::str::FromStr;
-use std::sync::Arc;
-
 use crate::crontap::types::{AddSchedule, KeyValue, Timezone};
 use crate::crontap::Client;
 use anyhow::{anyhow, bail, ensure, Context};
@@ -25,6 +21,10 @@ use sea_orm::{
 };
 use serde::Deserialize;
 use sha2::Sha256;
+use std::collections::{HashMap, HashSet};
+use std::str::FromStr;
+use std::sync::Arc;
+use std::time::Duration;
 use teloxide::prelude::*;
 use teloxide::types::{MessageId, ParseMode, Recipient};
 use tokio::task::JoinSet;
@@ -437,11 +437,11 @@ async fn update_schedules(
 
     ensure!(!bot_schedules.is_empty(), "Unable to find any bot schedule");
 
-    let mut joinset: JoinSet<anyhow::Result<()>> = JoinSet::new();
-    for schedule in bot_schedules {
+    for (index, schedule) in bot_schedules.into_iter().enumerate() {
         let state = state.clone();
-        joinset.spawn(async move {
-            state
+        tokio::task::spawn(async move {
+            tokio::time::sleep(Duration::from_secs((index + 1) as u64)).await;
+            let result = state
                 .crontap_client
                 .delete_schedule_by_id(
                     &schedule.id,
@@ -449,71 +449,70 @@ async fn update_schedules(
                     Some(&state.crontap_api_key),
                 )
                 .await
-                .context("Unable to delete bot schedule")?;
+                .context("Unable to delete bot schedule");
 
-            Ok(())
+            if let Err(e) = result {
+                let error_result = state
+                    .bot
+                    .send_message(
+                        state.error_chat_id,
+                        format!("Got error while deleting bot schedule: {:#}", e),
+                    )
+                    .await
+                    .context("Unable to send error message");
+
+                if let Err(e) = error_result {
+                    error!("{:#}", e);
+                }
+            }
+
+            Ok::<(), anyhow::Error>(())
         });
     }
-    joinset.spawn(async move {
-        let webhook_update_url = state.webhook_update_url.clone();
-        let next_update_time = newsletter_entry
-            .programming_entries
-            .into_iter()
-            .flat_map(|p| p.date_entries)
-            .map(|d| d.date)
-            .sorted()
-            .find(|d| d >= &Utc::now());
 
-        if let Some(next_update_time) = next_update_time {
-            let headers = {
-                let mut m = HashMap::new();
-                m.insert(
-                    "Authorization".to_string(),
-                    format!("Bearer {}", state.update_token),
-                );
-                m
-            };
-            let added_schedule: AddSchedule = AddSchedule {
-                data: None,
-                headers: Some(KeyValue(headers)),
-                integrations: None,
-                interval: format!(
-                    "{} {} {} {} *",
-                    next_update_time.minute(),
-                    next_update_time.hour(),
-                    next_update_time.day(),
-                    next_update_time.month()
-                ),
-                label: BOT_SCHEDULE_LABEL.to_string(),
-                timezone: Timezone("Europe/Rome".to_string()),
-                url: webhook_update_url.to_string(),
-                verb: "POST".to_string(),
-            };
-            state
-                .crontap_client
-                .create_schedule(
-                    Some(&state.crontap_api_key),
-                    Some(&state.crontap_client_id),
-                    &added_schedule,
-                )
-                .await
-                .context("Error while creating schedule")?;
-        }
-
-        Ok(())
-    });
-
-    let results = joinset
-        .join_all()
-        .await
+    let webhook_update_url = state.webhook_update_url.clone();
+    let next_update_time = newsletter_entry
+        .programming_entries
         .into_iter()
-        .filter_map(|r| r.err())
-        .collect::<Vec<_>>();
+        .flat_map(|p| p.date_entries)
+        .map(|d| d.date)
+        .sorted()
+        .find(|d| d >= &Utc::now());
 
-    if !results.is_empty() {
-        let error_string = results.into_iter().map(|e| format!("{:#}", e)).join("\n");
-
-        bail!("Errors when udpating schedules: {}", error_string);
+    if let Some(next_update_time) = next_update_time {
+        let headers = {
+            let mut m = HashMap::new();
+            m.insert(
+                "Authorization".to_string(),
+                format!("Bearer {}", state.update_token),
+            );
+            m
+        };
+        let added_schedule: AddSchedule = AddSchedule {
+            data: None,
+            headers: Some(KeyValue(headers)),
+            integrations: None,
+            interval: format!(
+                "{} {} {} {} *",
+                next_update_time.minute(),
+                next_update_time.hour(),
+                next_update_time.day(),
+                next_update_time.month()
+            ),
+            label: BOT_SCHEDULE_LABEL.to_string(),
+            timezone: Timezone("Europe/Rome".to_string()),
+            url: webhook_update_url.to_string(),
+            verb: "POST".to_string(),
+        };
+        state
+            .crontap_client
+            .create_schedule(
+                Some(&state.crontap_api_key),
+                Some(&state.crontap_client_id),
+                &added_schedule,
+            )
+            .await
+            .context("Error while creating schedule")?;
     }
 
     Ok(())
