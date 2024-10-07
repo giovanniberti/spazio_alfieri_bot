@@ -430,13 +430,14 @@ async fn update_schedules(
         .into_inner()
         .schedules;
 
-    let bot_schedules = schedules
+    let mut bot_schedules = schedules
         .into_iter()
         .filter(|s| s.label == BOT_SCHEDULE_LABEL)
         .collect::<Vec<_>>();
 
     ensure!(!bot_schedules.is_empty(), "Unable to find any bot schedule");
 
+    let last_schedule = bot_schedules.pop();
     for (index, schedule) in bot_schedules.into_iter().enumerate() {
         let state = state.clone();
         tokio::task::spawn(async move {
@@ -504,15 +505,29 @@ async fn update_schedules(
             url: webhook_update_url.to_string(),
             verb: "POST".to_string(),
         };
-        state
-            .crontap_client
-            .create_schedule(
-                Some(&state.crontap_api_key),
-                Some(&state.crontap_client_id),
-                &added_schedule,
-            )
-            .await
-            .context("Error while creating schedule")?;
+
+        if let Some(schedule) = last_schedule {
+            state
+                .crontap_client
+                .update_schedule_by_id(
+                    &schedule.id,
+                    Some(&state.crontap_api_key),
+                    Some(&state.crontap_client_id),
+                    &added_schedule,
+                )
+                .await
+                .context("Error while updating schedule")?;
+        } else {
+            state
+                .crontap_client
+                .create_schedule(
+                    Some(&state.crontap_api_key),
+                    Some(&state.crontap_client_id),
+                    &added_schedule,
+                )
+                .await
+                .context("Error while creating schedule")?;
+        }
     }
 
     Ok(())

@@ -563,11 +563,9 @@
       },
       "Schedule": {
         "required": [
-          "createdAt",
           "id",
           "interval",
           "label",
-          "status",
           "timezone",
           "url",
           "verb"
