@@ -27,6 +27,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use teloxide::prelude::*;
 use teloxide::types::{MessageId, ParseMode, Recipient};
+use teloxide::utils::markdown;
 use tokio::task::JoinSet;
 use tracing::level_filters::LevelFilter;
 use tracing::{error, info};
@@ -576,7 +577,7 @@ fn format_programming_entry(entry: &ProgrammingEntry) -> String {
                 date_entry
                     .additional_details
                     .as_ref()
-                    .map(|info| format!(" _{}_", info))
+                    .map(|info| format!(" _{}_", markdown::escape(info)))
                     .as_deref()
                     .unwrap_or(""),
                 strikethrough,
@@ -605,7 +606,8 @@ fn format_programming_entry(entry: &ProgrammingEntry) -> String {
 Prossime date:
 {}
     ",
-        entry.title, formatted_dates
+        markdown::escape(&entry.title),
+        formatted_dates
     )
 }
 
