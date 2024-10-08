@@ -436,8 +436,6 @@ async fn update_schedules(
         .filter(|s| s.label == BOT_SCHEDULE_LABEL)
         .collect::<Vec<_>>();
 
-    ensure!(!bot_schedules.is_empty(), "Unable to find any bot schedule");
-
     let last_schedule = bot_schedules.pop();
     for (index, schedule) in bot_schedules.into_iter().enumerate() {
         let state = state.clone();
