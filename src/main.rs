@@ -633,7 +633,7 @@ async fn persist_newsletter_entry(
             .iter()
             .map(|e| {
                 let program = entity::program::ActiveModel {
-                    id: Default::default(),
+                    id: ActiveValue::NotSet,
                     newsletter_id: newsletter.id.clone(),
                     title: ActiveValue::Set(e.title.clone()),
                 };
@@ -678,7 +678,7 @@ async fn persist_newsletter_entry(
     entity::entry::Entity::insert_many(entries_iter)
         .exec(connection)
         .await
-        .context("Unable to save entries!")?;
+        .context("Unable to save entries")?;
 
     Ok(newsletter)
 }
