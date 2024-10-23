@@ -2,7 +2,7 @@
 
 use crate::crontap::types::{AddSchedule, KeyValue, Timezone};
 use crate::crontap::Client;
-use anyhow::{anyhow, bail, ensure, Context};
+use anyhow::{anyhow, bail, Context};
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -336,7 +336,7 @@ async fn update_latest_newsletter_message(
             let error_string = results
                 .into_iter()
                 .filter_map(|r| r.err())
-                .map(|e| format!("{:?}", e))
+                .map(|e| format!("{:#}", e))
                 .join("\n");
 
             bail!("{}", error_string);
