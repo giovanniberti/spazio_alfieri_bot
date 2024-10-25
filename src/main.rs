@@ -332,7 +332,7 @@ async fn update_latest_newsletter_message(
 
         let results = joinset.join_all().await;
 
-        if !results.is_empty() {
+        if results.iter().any(|r| r.is_err()) {
             let error_string = results
                 .into_iter()
                 .filter_map(|r| r.err())
