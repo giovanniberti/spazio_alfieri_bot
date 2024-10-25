@@ -17,7 +17,7 @@ use migration::{Migrator, MigratorTrait};
 use reqwest::Url;
 use sea_orm::{
     ActiveModelTrait, ActiveValue, Database, DatabaseConnection, EntityTrait, LoaderTrait,
-    ModelTrait, QueryOrder,
+    ModelTrait, QueryOrder, TransactionTrait,
 };
 use serde::Deserialize;
 use sha2::Sha256;
@@ -613,6 +613,7 @@ async fn persist_newsletter_entry(
     newsletter_entry: &NewsletterEntry,
     connection: &DatabaseConnection,
 ) -> anyhow::Result<entity::newsletter::ActiveModel> {
+    let transaction = connection.begin().await?;
     let newsletter = {
         let newsletter = entity::newsletter::ActiveModel {
             id: Default::default(),
@@ -680,5 +681,6 @@ async fn persist_newsletter_entry(
         .await
         .context("Unable to save entries")?;
 
+    transaction.commit().await?;
     Ok(newsletter)
 }
