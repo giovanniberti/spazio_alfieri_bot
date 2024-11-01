@@ -28,6 +28,12 @@ pub struct DateEntry {
     pub additional_details: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub enum ParsedDateEntries<'r> {
+    Parsed(Vec<DateEntry>),
+    Uncertain(Pair<'r, Rule>),
+}
+
 #[derive(Parser)]
 #[grammar = "resources/date_entry.pest"]
 struct DateEntryParser;
@@ -79,13 +85,44 @@ fn parse_html(dom: Html) -> anyhow::Result<NewsletterEntry> {
 
         let parsed_pairs =
             DateEntryParser::parse(Rule::text, &text).context("Unable to parse text")?;
+        let mut pairs_to_reparse = Vec::new();
         let mut date_entries = Vec::new();
         for pair in parsed_pairs {
             match pair.as_rule() {
                 Rule::date_entry => {
                     let parsed_date_entries =
-                        parse_date_entry(pair).context("Unable to parse date entry")?;
-                    date_entries.extend(parsed_date_entries);
+                        parse_date_entry(pair, None).context("Unable to parse date entry")?;
+
+                    match parsed_date_entries {
+                        ParsedDateEntries::Parsed(parsed) => date_entries.extend(parsed),
+                        ParsedDateEntries::Uncertain(to_reparse) => {
+                            pairs_to_reparse.push(to_reparse)
+                        }
+                    }
+                }
+                r => bail!("Unexpected top-level rule: {:?}", r),
+            }
+        }
+
+        let month_hint = date_entries
+            .iter()
+            .min_by_key(|d| d.date)
+            .ok_or(anyhow!("Newsletter has no freely-parseable date entries!"))?
+            .date
+            .month();
+        for pair in pairs_to_reparse {
+            match pair.as_rule() {
+                Rule::date_entry => {
+                    let parsed_date_entries = parse_date_entry(pair, Some(month_hint))
+                        .context("Unable to parse date entry")?;
+
+                    match parsed_date_entries {
+                        ParsedDateEntries::Parsed(parsed) => date_entries.extend(parsed),
+                        ParsedDateEntries::Uncertain(to_reparse) => bail!(
+                            "Unable to parse month from input: '{}'",
+                            to_reparse.as_str()
+                        ),
+                    }
                 }
                 r => bail!("Unexpected top-level rule: {:?}", r),
             }
@@ -103,13 +140,16 @@ fn parse_html(dom: Html) -> anyhow::Result<NewsletterEntry> {
     })
 }
 
-fn parse_date_entry(pair: Pair<Rule>) -> anyhow::Result<Vec<DateEntry>> {
+fn parse_date_entry(
+    pair: Pair<Rule>,
+    newsletter_month_hint: Option<u32>,
+) -> anyhow::Result<ParsedDateEntries> {
     let mut day_number = None;
     let mut month = None;
     let mut times = Vec::new();
     let mut additional_details = None;
 
-    for inner_pair in pair.into_inner() {
+    for inner_pair in pair.clone().into_inner() {
         let src = inner_pair.as_str();
         match inner_pair.as_rule() {
             Rule::day_number => {
@@ -153,7 +193,25 @@ fn parse_date_entry(pair: Pair<Rule>) -> anyhow::Result<Vec<DateEntry>> {
     match (day_number, month, &times, additional_details) {
         (Some(day), _, times, additional_details) if !times.is_empty() => {
             let now = Utc::now().with_timezone(&Europe::Rome);
-            let month = month.unwrap_or(now.month());
+            let month = {
+                match (month, newsletter_month_hint) {
+                    (Some(month), _) => month,
+                    (None, Some(hint)) => {
+                        // `newsletter_month_hint` takes the month of the earliest parsed
+                        // date entry
+                        // We assume that if there is no explicit month we are near the end of the
+                        // month, so if the day is near the beginning of the month
+                        // we assume it's referring to the next month and increment the month number
+                        if day < 15 {
+                            (hint - 2) % 12 + 1
+                        } else {
+                            hint
+                        }
+                    }
+                    (None, None) => return Ok(ParsedDateEntries::Uncertain(pair)),
+                }
+            };
+
             let date_entries = times
                 .iter()
                 .map(|(hours, minutes)| {
@@ -180,7 +238,7 @@ fn parse_date_entry(pair: Pair<Rule>) -> anyhow::Result<Vec<DateEntry>> {
                 })
                 .collect();
 
-            Ok(date_entries)
+            Ok(ParsedDateEntries::Parsed(date_entries))
         }
         _ => {
             let missing_day_str = match day_number {
