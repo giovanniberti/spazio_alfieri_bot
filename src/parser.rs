@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use anyhow::{anyhow, bail, Context};
-use chrono::{DateTime, Datelike, TimeZone, Utc};
+use chrono::{DateTime, Datelike, Months, TimeZone, Utc};
 use chrono_tz::{Europe, Tz};
 use itertools::Itertools;
 use pest::iterators::Pair;
@@ -106,9 +106,17 @@ fn parse_html(dom: Html) -> anyhow::Result<NewsletterEntry> {
 
         let month_hint = date_entries
             .iter()
-            .min_by_key(|d| d.date)
-            .ok_or(anyhow!("Newsletter has no freely-parseable date entries!"))?
-            .date
+            .map(|d| d.date)
+            .min()
+            .unwrap_or_else(|| {
+                let now = Utc::now().with_timezone(&Europe::Rome);
+                let anchor = if now.day() < 15 {
+                    now - Months::new(1)
+                } else {
+                    now
+                };
+                anchor
+            })
             .month();
         for pair in pairs_to_reparse {
             match pair.as_rule() {
@@ -203,7 +211,11 @@ fn parse_date_entry(
                         // month, so if the day is near the beginning of the month
                         // we assume it's referring to the next month and increment the month number
                         if day < 15 {
-                            (hint - 2) % 12 + 1
+                            if hint == 12 {
+                                1
+                            } else {
+                                hint + 1
+                            }
                         } else {
                             hint
                         }
