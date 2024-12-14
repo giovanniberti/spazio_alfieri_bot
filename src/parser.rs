@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use anyhow::{anyhow, bail, Context};
-use chrono::{DateTime, Datelike, Months, TimeZone, Utc};
+use chrono::{DateTime, Datelike, TimeZone, Utc};
 use chrono_tz::{Europe, Tz};
 use itertools::Itertools;
 use pest::iterators::Pair;
@@ -38,11 +38,82 @@ pub enum ParsedDateEntries<'r> {
 #[grammar = "resources/date_entry.pest"]
 struct DateEntryParser;
 
-pub fn parse_email_body(body: String) -> anyhow::Result<NewsletterEntry> {
-    parse_html(Html::parse_document(&body))
+mod subject_line {
+    use pest_derive::Parser;
+
+    #[derive(Parser)]
+    #[grammar = "resources/subject_line.pest"]
+    pub struct SubjectLineParser;
 }
 
-fn parse_html(dom: Html) -> anyhow::Result<NewsletterEntry> {
+pub fn parse_email_body(subject: String, body: String) -> anyhow::Result<NewsletterEntry> {
+    let date_boundaries = parse_subject_line_dates(&subject).context("Unable to parse subject line")?;
+    parse_html(Html::parse_document(&body), date_boundaries)
+}
+
+fn parse_subject_line_dates(subject_line: &str) -> anyhow::Result<Vec<DateTime<Tz>>> {
+    use subject_line::*;
+    let parsed_pairs =
+        SubjectLineParser::parse(Rule::text, subject_line)
+            .context("Unable to parse text rule for subject line")?;
+    let mut day_numbers = Vec::with_capacity(2);
+    let mut months = Vec::new();
+
+    for pair in parsed_pairs {
+        match pair.as_rule() {
+            Rule::day_number => {
+                let day_number = u32::from_str(pair.as_str()).context("Unable to parse invalid `day_number` value")?;
+                day_numbers.push(day_number);
+            }
+            Rule::month => {
+                let month_number = month_name_to_number(pair.as_str())?;
+
+                if months.is_empty() && day_numbers.is_empty() || day_numbers.len() > 2 {
+                    bail!("Unexpected `month` input with invalid day numbers: {day_numbers:?}");
+                }
+
+                months.push(month_number)
+            }
+            r => {
+                println!("Got unexpected rule: {:?}", r)
+            }
+        }
+    }
+
+    if day_numbers.len() != 2 {
+        bail!("Expected two day numbers, got {}", day_numbers.len());
+    }
+
+    let mut dates = Vec::with_capacity(2);
+    let now = Utc::now();
+
+    if months.len() == 1 {
+        months.push(months[0]);
+    }
+
+    for (day, month) in day_numbers.into_iter().zip(months) {
+        let date = Europe::Rome
+            .with_ymd_and_hms(now.year(), month, day, 0, 0, 0)
+            .single()
+            .with_context(|| {
+                format!(
+                    "Unable to get valid date for y-m-d = {}-{month}-{day} ",
+                    now.year()
+                )
+            })?;
+
+        dates.push(date);
+    }
+
+    dates[1] = dates[1].with_time(NaiveTime::from_hms_opt(23, 59, 59).unwrap()).unwrap();
+
+    Ok(dates)
+}
+
+fn parse_html(dom: Html, date_boundaries: Vec<DateTime<Tz>>) -> anyhow::Result<NewsletterEntry> {
+    let [lower_bound, upper_bound] = date_boundaries[..] else {
+        bail!("Invalid date boundaries: {date_boundaries:?}")
+    };
     let newsletter_link_selector =
         Selector::parse(r#"table > tbody > tr > td > table > tbody > tr > td > p > a"#).unwrap();
     let newsletter_link = dom
@@ -91,7 +162,7 @@ fn parse_html(dom: Html) -> anyhow::Result<NewsletterEntry> {
             match pair.as_rule() {
                 Rule::date_entry => {
                     let parsed_date_entries =
-                        parse_date_entry(pair, None).context("Unable to parse date entry")?;
+                        parse_date_entry(pair, lower_bound, upper_bound).context("Unable to parse date entry")?;
 
                     match parsed_date_entries {
                         ParsedDateEntries::Parsed(parsed) => date_entries.extend(parsed),
@@ -104,24 +175,10 @@ fn parse_html(dom: Html) -> anyhow::Result<NewsletterEntry> {
             }
         }
 
-        let month_hint = date_entries
-            .iter()
-            .map(|d| d.date)
-            .min()
-            .unwrap_or_else(|| {
-                let now = Utc::now().with_timezone(&Europe::Rome);
-                let anchor = if now.day() < 15 {
-                    now - Months::new(1)
-                } else {
-                    now
-                };
-                anchor
-            })
-            .month();
         for pair in pairs_to_reparse {
             match pair.as_rule() {
                 Rule::date_entry => {
-                    let parsed_date_entries = parse_date_entry(pair, Some(month_hint))
+                    let parsed_date_entries = parse_date_entry(pair, lower_bound, upper_bound)
                         .context("Unable to parse date entry")?;
 
                     match parsed_date_entries {
@@ -148,9 +205,28 @@ fn parse_html(dom: Html) -> anyhow::Result<NewsletterEntry> {
     })
 }
 
+fn month_name_to_number(name: &str) -> anyhow::Result<u32> {
+    match name {
+        "gennaio" => Ok(1),
+        "febbraio" => Ok(2),
+        "marzo" => Ok(3),
+        "aprile" => Ok(4),
+        "maggio" => Ok(5),
+        "giugno" => Ok(6),
+        "luglio" => Ok(7),
+        "agosto" => Ok(8),
+        "settembre" => Ok(9),
+        "ottobre" => Ok(10),
+        "novembre" => Ok(11),
+        "dicembre" => Ok(12),
+        _ => bail!("Encountered invalid month: '{}'", name),
+    }
+}
+
 fn parse_date_entry(
     pair: Pair<Rule>,
-    newsletter_month_hint: Option<u32>,
+    lower_bound: DateTime<Tz>,
+    upper_bound: DateTime<Tz>,
 ) -> anyhow::Result<ParsedDateEntries> {
     let mut day_number = None;
     let mut month = None;
@@ -167,23 +243,7 @@ fn parse_date_entry(
                     })?)
             }
             Rule::month => {
-                let month_number = match src {
-                    "gennaio" => 1,
-                    "febbraio" => 2,
-                    "marzo" => 3,
-                    "aprile" => 4,
-                    "maggio" => 5,
-                    "giugno" => 6,
-                    "luglio" => 7,
-                    "agosto" => 8,
-                    "settembre" => 9,
-                    "ottobre" => 10,
-                    "novembre" => 11,
-                    "dicembre" => 12,
-                    _ => bail!("Encountered invalid month: '{}'", src),
-                };
-
-                month = Some(month_number);
+                month = Some(month_name_to_number(src)?);
             }
             Rule::additional_details => {
                 additional_details = Some(src.to_string());
@@ -202,25 +262,18 @@ fn parse_date_entry(
         (Some(day), _, times, additional_details) if !times.is_empty() => {
             let now = Utc::now().with_timezone(&Europe::Rome);
             let month = {
-                match (month, newsletter_month_hint) {
-                    (Some(month), _) => month,
-                    (None, Some(hint)) => {
-                        // `newsletter_month_hint` takes the month of the earliest parsed
-                        // date entry
-                        // We assume that if there is no explicit month we are near the end of the
-                        // month, so if the day is near the beginning of the month
-                        // we assume it's referring to the next month and increment the month number
-                        if day < 15 {
-                            if hint == 12 {
-                                1
-                            } else {
-                                hint + 1
-                            }
-                        } else {
-                            hint
-                        }
+                match month {
+                    Some(month) => month,
+                    None => {
+                        let first_candidate_date = lower_bound.with_day(day);
+                        let second_candidate_date = upper_bound.with_day(day);
+                        first_candidate_date
+                            .filter(|d| d >= &lower_bound)
+                            .or(second_candidate_date)
+                            .filter(|d| d <= &upper_bound)
+                            .map(|d| d.month())
+                            .ok_or_else(|| anyhow!("Unable get correct month for day {day}"))?
                     }
-                    (None, None) => return Ok(ParsedDateEntries::Uncertain(pair)),
                 }
             };
 
@@ -242,8 +295,9 @@ fn parse_date_entry(
                             )
                         })
                 })
-                .collect::<anyhow::Result<Vec<_>>>()?
+                .collect::<Vec<anyhow::Result::<_, _>>>()
                 .into_iter()
+                .filter_map(Result::ok)
                 .map(|date| DateEntry {
                     date,
                     additional_details: additional_details.clone(),
@@ -319,7 +373,8 @@ mod tests {
         let mut file_contents = String::new();
         f.read_to_string(&mut file_contents).unwrap();
 
-        let newsletter_entry = parser::parse_email_body(file_contents).unwrap();
+        let subject_line = "Spazio Alfieri • programmazione 25 settembre > 2 ottobre".to_string();
+        let newsletter_entry = parser::parse_email_body(subject_line, file_contents).unwrap();
 
         let expected_link = "https://6534.sqm-secure.eu/index.php?option=com_acymailing&ctrl=archive&task=view&mailid=231&key=FdgUJqRewx&subid=5789-00898287&tmpl=component&lang=it&utm_source=newsletter_231&utm_medium=email&utm_campaign=newsletter-24-30-novembre&acm=5789_231";
         let expected_entries: Vec<ProgrammingEntry> = vec![

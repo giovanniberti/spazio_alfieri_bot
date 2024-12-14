@@ -196,6 +196,7 @@ where
 #[derive(Debug, Clone, Deserialize)]
 struct MailgunWebhookBody {
     from: String,
+    subject: String,
     #[serde(rename = "body-html")]
     html_body: String,
     token: String,
@@ -246,7 +247,8 @@ async fn receive_newsletter_email(
         }
 
         let newsletter_entry =
-            parse_email_body(payload.html_body).context("Could not parse email body")?;
+            parse_email_body(payload.subject, payload.html_body)
+                .context("Could not parse email body")?;
 
         let mut saved_newsletter =
             persist_newsletter_entry(&newsletter_entry, &state.db_connection)
