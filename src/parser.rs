@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use anyhow::{anyhow, bail, Context};
-use chrono::{DateTime, Datelike, TimeZone, Utc};
+use chrono::{DateTime, Datelike, NaiveTime, TimeZone, Utc};
 use chrono_tz::{Europe, Tz};
 use itertools::Itertools;
 use pest::iterators::Pair;
@@ -103,6 +103,10 @@ fn parse_subject_line_dates(subject_line: &str) -> anyhow::Result<Vec<DateTime<T
             })?;
 
         dates.push(date);
+    }
+
+    if dates[1] < dates[0] { // handle year crossover e.g. dec 27 -> jan 3
+        dates[1] = dates[1].with_year(now.year() + 1).unwrap();
     }
 
     dates[1] = dates[1].with_time(NaiveTime::from_hms_opt(23, 59, 59).unwrap()).unwrap();
@@ -260,40 +264,29 @@ fn parse_date_entry(
 
     match (day_number, month, &times, additional_details) {
         (Some(day), _, times, additional_details) if !times.is_empty() => {
-            let now = Utc::now().with_timezone(&Europe::Rome);
-            let month = {
-                match month {
-                    Some(month) => month,
-                    None => {
-                        let first_candidate_date = lower_bound.with_day(day);
+            let date_entries = times
+                .iter()
+                .map(|(hours, minutes)| {
+                        let first_candidate_date: Option<DateTime<Tz>> = lower_bound.with_day(day);
                         let second_candidate_date = upper_bound.with_day(day);
                         first_candidate_date
                             .filter(|d| d >= &lower_bound)
                             .or(second_candidate_date)
                             .filter(|d| d <= &upper_bound)
-                            .map(|d| d.month())
-                            .ok_or_else(|| anyhow!("Unable get correct month for day {day}"))?
-                    }
-                }
-            };
-
-            let date_entries = times
-                .iter()
-                .map(|(hours, minutes)| {
-                    Europe::Rome
-                        .with_ymd_and_hms(now.year(), month, day, *hours, *minutes, 0)
-                        .single()
-                        .with_context(|| {
-                            format!(
-                                "Unable to get valid date for y-m-d h:m:s = {}-{}-{} {}:{}:{}",
-                                now.year(),
-                                month,
-                                day,
-                                hours,
-                                minutes,
-                                0
-                            )
-                        })
+                            .and_then(|d| {
+                                let time = NaiveTime::from_hms_opt(*hours, *minutes, 0);
+                                time.and_then(|t| d.with_time(t).single())
+                            })
+                            .with_context(|| {
+                                format!(
+                                    "Unable to get valid date with day {} from bounds: [{}, {}] and time {}:{}",
+                                    day,
+                                    lower_bound,
+                                    upper_bound,
+                                    hours,
+                                    minutes
+                                )
+                            })
                 })
                 .collect::<Vec<anyhow::Result::<_, _>>>()
                 .into_iter()
