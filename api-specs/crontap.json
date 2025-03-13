@@ -2,12 +2,12 @@
   "openapi": "3.0.1",
   "info": {
     "title": "Crontap API",
-    "description": "Crontap allows scheduling highly configurable API calls.\n      See more on [crontap.com ↗️](https://crontap.com)  \n _Authentication_ \n All endpoints are authenticated. Authentication is done via the `ApiKey` & `ClientId` headers. \n You can obtain credentials by logging in to your account.\n    ",
-    "version": "1.0.2"
+    "description": "Crontap allows scheduling highly configurable API calls.\n      See more on [crontap.com ↗️](https://crontap.com)  \n __Authentication__ \n All endpoints are authenticated. Authentication is done via the `ApiKey` & `ClientId` headers. \n You can obtain credentials by logging in to your account.\n    ",
+    "version": "1.0.3"
   },
   "servers": [
     {
-      "url": "https://cron.apihustle.com/"
+      "url": "https://api.crontap.com/"
     }
   ],
   "paths": {
@@ -108,7 +108,7 @@
           "Schedule"
         ],
         "summary": "Update a schedule",
-        "description": "Allows updating a schedule with the provided configuration if found.  __NB 🤚__ this replaces all properties of the previous schedule (PUT not PATCH). Make sure to provide any existing configuration. Use PATCH to update properties in place. Returns the updated schedule.",
+        "description": "Allows updating a schedule with the provided configuration if found.  __NB \uD83E\uDD1A__ this replaces all properties of the previous schedule (PUT not PATCH). Make sure to provide any existing configuration. Use PATCH to update properties in place. Returns the updated schedule.",
         "parameters": [
           {
             "name": "scheduleId",
@@ -134,7 +134,7 @@
           }
         ],
         "requestBody": {
-          "description": "📝 Notes \n __interval__ is the cron interval e.g. __* * * * *__. Get help in [CronTool ↗️](https://tool.crontap.com/cronjob-debugger) \n __timezone__ is the timezone the interval should run in. See [cron.apihustle.com/timezones](https://cron.apihustle.com/timezones) for a list of all timezones. \n __headers__ are optional and can be used to send custom headers with the request. \n __data__ is optional and can be used to send custom payload with the request. \n __integrations__ are optional and can be used to send a request to a third party or your own API when the schedule is triggered (successfully or not depending on the __callOnSuccess__ option). \n __label__ is optional and only used to easier identify a schedule",
+          "description": "\uD83D\uDCDD Notes \n __interval__ is the cron interval e.g. __* * * * *__. Get help in [CronTool ↗️](https://tool.crontap.com/cronjob-debugger) \n __timezone__ is the timezone the interval should run in. See [api.crontap.com/timezones](https://api.crontap.com/timezones) for a list of all timezones. \n __headers__ are optional and can be used to send custom headers with the request. \n __data__ is optional and can be used to send custom payload with the request. \n __integrations__ are optional and can be used to send a request to a third party or your own API when the schedule is triggered (successfully or not depending on the __callOnSuccess__ option). \n __label__ is optional and only used to easier identify a schedule",
           "content": {
             "application/json": {
               "schema": {
@@ -320,7 +320,7 @@
           }
         ],
         "requestBody": {
-          "description": "📝 Notes \n __interval__ is the cron interval e.g. __* * * * *__. Get help in [CronTool ↗️](https://tool.crontap.com/cronjob-debugger) \n __timezone__ is the timezone the interval should run in. See [cron.apihustle.com/timezones](https://cron.apihustle.com/timezones) for a list of all timezones. \n __headers__ are optional and can be used to send custom headers with the request. \n __data__ is optional and can be used to send custom payload with the request. \n __integrations__ are optional and can be used to send a request to a third party or your own API when the schedule is triggered (successfully or not depending on the __callOnSuccess__ option). \n __label__ is optional and only used to easier identify a schedule",
+          "description": "\uD83D\uDCDD Notes \n __interval__ is the cron interval e.g. __* * * * *__. Get help in [CronTool ↗️](https://tool.crontap.com/cronjob-debugger) \n __timezone__ is the timezone the interval should run in. See [api.crontap.com/timezones](https://api.crontap.com/timezones) for a list of all timezones. \n __headers__ are optional and can be used to send custom headers with the request. \n __data__ is optional and can be used to send custom payload with the request. \n __integrations__ are optional and can be used to send a request to a third party or your own API when the schedule is triggered (successfully or not depending on the __callOnSuccess__ option). \n __label__ is optional and only used to easier identify a schedule",
           "content": {
             "application/json": {
               "schema": {
@@ -563,9 +563,11 @@
       },
       "Schedule": {
         "required": [
+          "createdAt",
           "id",
           "interval",
           "label",
+          "status",
           "timezone",
           "url",
           "verb"
@@ -609,7 +611,6 @@
           },
           "integrations": {
             "type": "array",
-            "nullable": true,
             "items": {
               "$ref": "#/components/schemas/IntegrationSetting"
             }
@@ -691,7 +692,6 @@
           },
           "integrations": {
             "type": "array",
-            "nullable": true,
             "items": {
               "$ref": "#/components/schemas/AddIntegrationSetting"
             }

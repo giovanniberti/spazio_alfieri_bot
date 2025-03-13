@@ -493,7 +493,7 @@ async fn update_schedules(
         let added_schedule: AddSchedule = AddSchedule {
             data: None,
             headers: Some(KeyValue(headers)),
-            integrations: None,
+            integrations: Vec::new(),
             interval: format!(
                 "{} {} {} {} *",
                 next_update_time.minute(),
