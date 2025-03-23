@@ -33,7 +33,6 @@ use tracing::level_filters::LevelFilter;
 use tracing::{error, info};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{EnvFilter, Layer};
-
 use crate::parser::{parse_email_body, DateEntry, NewsletterEntry, ProgrammingEntry};
 
 mod crontap;
@@ -678,10 +677,13 @@ async fn persist_newsletter_entry(
             })
         });
 
-    entity::entry::Entity::insert_many(entries_iter)
-        .exec(connection)
-        .await
-        .context("Unable to save entries")?;
+    let entries = entries_iter.collect_vec();
+    if !entries.is_empty() {
+        entity::entry::Entity::insert_many(entries)
+            .exec(connection)
+            .await
+            .context("Unable to save entries")?;
+    }
 
     transaction.commit().await?;
     Ok(newsletter)
