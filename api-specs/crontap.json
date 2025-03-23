@@ -563,11 +563,9 @@
       },
       "Schedule": {
         "required": [
-          "createdAt",
           "id",
           "interval",
           "label",
-          "status",
           "timezone",
           "url",
           "verb"
@@ -611,6 +609,7 @@
           },
           "integrations": {
             "type": "array",
+            "nullable": true,
             "items": {
               "$ref": "#/components/schemas/IntegrationSetting"
             }

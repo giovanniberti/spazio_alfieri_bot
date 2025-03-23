@@ -22,6 +22,7 @@ use sea_orm::{
 use serde::Deserialize;
 use sha2::Sha256;
 use std::collections::{HashMap, HashSet};
+use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -96,7 +97,7 @@ async fn main() -> anyhow::Result<()> {
     let crontap_api_key = std::env::var("CRONTAP_API_KEY")
         .context("Unable to read CRONTAP_API_KEY environment variable")?;
 
-    let crontap_client = Client::new("https://cron.apihustle.com/");
+    let crontap_client = Client::new("https://api.crontap.com");
 
     let host_baseurl = {
         let raw = std::env::var("HOST_BASEURL")
@@ -171,7 +172,14 @@ struct ServerState {
     webhook_update_url: Url,
 }
 
+#[derive(Debug)]
 struct ServerError(anyhow::Error);
+
+impl Display for ServerError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
 
 impl IntoResponse for ServerError {
     fn into_response(self) -> Response {
